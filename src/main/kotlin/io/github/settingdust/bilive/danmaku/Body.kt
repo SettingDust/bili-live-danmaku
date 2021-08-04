@@ -56,7 +56,7 @@ sealed class Body {
                     StdDeserializer<Code>(clazz) {
                     override fun deserialize(p: JsonParser, ctxt: DeserializationContext?): Code {
                         val node = p.codec.readTree<JsonNode>(p)
-                        return valueOf(node["code"].asInt())
+                        return valueOf(node.asInt())
                     }
                 }
             }
