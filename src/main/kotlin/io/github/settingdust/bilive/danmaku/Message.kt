@@ -13,42 +13,40 @@ sealed class Message : Body() {
     /**
      * @see [MessageType.DANMU_MSG]
      */
-    @JsonDeserialize(using = Danmu.Companion.Deserializer::class)
+    @JsonDeserialize(using = Danmu.Deserializer::class)
     data class Danmu(val content: String, val color: Color, val timestamp: Date, val sender: User) : Message() {
-        companion object {
-            class Deserializer(clazz: Class<AuthenticationReply>? = null) : StdDeserializer<Danmu>(clazz) {
-                override fun deserialize(p: JsonParser, ctxt: DeserializationContext?): Danmu {
-                    val node = p.codec.readTree<JsonNode>(p)
-                    if (node["cmd"].asText() == "DANMU_MSG") {
-                        val info = node["info"].elements().asSequence().toList()
-                        val meta = info[0]
-                        val user = info[2]
-                        val medal = info[3]
-                        val userLevel = info[4]
-                        val userTitle = info[5]
-                        return Danmu(
-                            info[1].asText(), Color(meta[3].asInt()), Date(meta[4].asLong()),
-                            User(
-                                user[0].asInt(),
-                                user[1].asText(),
-                                if (!medal.isEmpty) Medal(
-                                    medal[0].asInt(),
-                                    medal[1].asText(),
-                                    medal[2].asText(),
-                                    medal[3].asInt(),
-                                    Color(medal[4].asInt())
-                                ) else null,
-                                UserLevel(
-                                    userLevel[0].asInt(),
-                                    Color(userLevel[2].asInt()),
-                                    userLevel[3].asText()
-                                ),
-                                userTitle[0].asText() to userTitle[1].asText()
-                            )
+        class Deserializer(clazz: Class<AuthenticationReply>? = null) : StdDeserializer<Danmu>(clazz) {
+            override fun deserialize(p: JsonParser, ctxt: DeserializationContext?): Danmu {
+                val node = p.codec.readTree<JsonNode>(p)
+                if (node["cmd"].asText() == "DANMU_MSG") {
+                    val info = node["info"].elements().asSequence().toList()
+                    val meta = info[0]
+                    val user = info[2]
+                    val medal = info[3]
+                    val userLevel = info[4]
+                    val userTitle = info[5]
+                    return Danmu(
+                        info[1].asText(), Color(meta[3].asInt()), Date(meta[4].asLong()),
+                        User(
+                            user[0].asInt(),
+                            user[1].asText(),
+                            if (!medal.isEmpty) Medal(
+                                medal[0].asInt(),
+                                medal[1].asText(),
+                                medal[2].asText(),
+                                medal[3].asInt(),
+                                Color(medal[4].asInt())
+                            ) else null,
+                            UserLevel(
+                                userLevel[0].asInt(),
+                                Color(userLevel[2].asInt()),
+                                userLevel[3].asText()
+                            ),
+                            userTitle[0].asText() to userTitle[1].asText()
                         )
-                    } else {
-                        throw InvalidFormatException(p, "Can't deserialize to Danmu", node, Danmu::class.java)
-                    }
+                    )
+                } else {
+                    throw InvalidFormatException(p, "Can't deserialize to Danmu", node, Danmu::class.java)
                 }
             }
         }
@@ -63,7 +61,7 @@ data class User(
     val title: Pair<String, String>
 )
 
-data class Medal(val level: Int, val name: String, val streamer: String, val streamerRoomId: Int, val color: Color)
+data class Medal(val level: Int, val name: String, val streamer: String, val roomId: Int, val color: Color)
 
 data class UserLevel(val level: Int, val color: Color, val rank: String)
 
