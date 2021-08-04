@@ -1,4 +1,4 @@
-import org.jlleitschuh.gradle.ktlint.KtlintExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.5.21"
@@ -17,6 +17,7 @@ val ktorVersion = "1.6.2"
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.1")
 
     val brotliVersion = "1.5.0"
     implementation("com.aayushatharva.brotli4j:brotli4j:$brotliVersion")
@@ -31,11 +32,11 @@ dependencies {
     testImplementation(kotlin("test-junit5"))
 }
 
-configure<KtlintExtension> {
-}
-
 tasks {
     test {
         useJUnitPlatform()
+    }
+    withType<KotlinCompile>().configureEach {
+        kotlinOptions.freeCompilerArgs += "-Xopt-in=kotlin.RequiresOptIn"
     }
 }
