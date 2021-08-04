@@ -14,26 +14,28 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.features.websocket.WebSockets
 import io.ktor.client.features.websocket.wss
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.math.BigInteger
 import kotlin.concurrent.timer
+import kotlin.coroutines.CoroutineContext
 
 val objectMapper = jacksonObjectMapper().apply {
     setSerializationInclusion(JsonInclude.Include.NON_NULL)
     propertyNamingStrategy = PropertyNamingStrategies.LOWER_CASE
 }
 
-object BiliveDanmaku {
+class BiliveDanmaku(override val coroutineContext: CoroutineContext) : CoroutineScope {
     private val client = HttpClient(CIO) {
         install(WebSockets)
     }
 
-    suspend fun connect(roomId: Int): Channel<Body> {
-        val channel = Channel<Body>()
-
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun connect(roomId: Int) = produce<Body> {
         // TODO Fetch id from https://api.live.bilibili.com/room/v1/Room/get_info?room_id=5050
         // TODO Fetch from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=5050
         client.wss(
@@ -68,6 +70,5 @@ object BiliveDanmaku {
                 }
             }
         }
-        return channel
     }
 }
