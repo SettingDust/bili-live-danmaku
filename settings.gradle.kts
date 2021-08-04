@@ -1,1 +1,1 @@
-rootProject.name = "bili-live-danmaku"
+rootProject.name = "bilive-danmaku"
