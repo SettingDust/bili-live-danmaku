@@ -1,11 +1,17 @@
 package io.github.settingdust.bilive.danmaku
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer
-import com.fasterxml.jackson.databind.exc.InvalidFormatException
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import java.awt.Color
 import java.util.Date
 
@@ -13,46 +19,63 @@ sealed class Message : Body() {
     /**
      * @see [MessageType.DANMU_MSG]
      */
-    @JsonDeserialize(using = Danmu.Deserializer::class)
-    data class Danmu(val content: String, val color: Color, val timestamp: Date, val sender: User) : Message() {
-        class Deserializer(clazz: Class<AuthenticationReply>? = null) : StdDeserializer<Danmu>(clazz) {
-            override fun deserialize(p: JsonParser, ctxt: DeserializationContext?): Danmu {
-                val node = p.codec.readTree<JsonNode>(p)
-                if (node["cmd"].asText() == "DANMU_MSG") {
-                    val info = node["info"].elements().asSequence().toList()
-                    val meta = info[0]
-                    val user = info[2]
-                    val medal = info[3]
-                    val userLevel = info[4]
-                    val userTitle = info[5]
-                    return Danmu(
-                        info[1].asText(), Color(meta[3].asInt()), Date(meta[4].asLong()),
-                        User(
-                            user[0].asInt(),
-                            user[1].asText(),
-                            if (!medal.isEmpty) Medal(
-                                medal[0].asInt(),
-                                medal[1].asText(),
-                                medal[2].asText(),
-                                medal[3].asInt(),
-                                Color(medal[4].asInt())
-                            ) else null,
-                            UserLevel(
-                                userLevel[0].asInt(),
-                                Color(userLevel[2].asInt()),
-                                userLevel[3].asText()
-                            ),
-                            userTitle[0].asText() to userTitle[1].asText()
+    @Serializable
+    data class Danmu(
+        val content: String,
+        @Contextual val color: Color,
+        @Contextual val timestamp: Date,
+        val sender: User
+    ) : Message() {
+        internal object Serializer {
+            object Packet : MessageSerializer<Danmu> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+
+                override fun deserialize(decoder: Decoder): Danmu = jsonFormat.decodeFromString(decoder.decodeString())
+            }
+
+            object Json : MessageSerializer<Danmu> {
+                override fun deserialize(decoder: Decoder): Danmu {
+                    require(decoder is JsonDecoder)
+                    val element = decoder.decodeJsonElement().jsonObject
+                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.DANMU_MSG.name, true)) {
+                        val info = element["info"]!!.jsonArray
+                        val meta = info[0].jsonArray
+                        val user = info[2].jsonArray
+                        val medal = info[3].jsonArray
+                        val userLevel = info[4].jsonArray
+                        val userTitle = info[5].jsonArray
+                        return Danmu(
+                            info[1].jsonPrimitive.content,
+                            Color(meta[3].jsonPrimitive.int),
+                            Date(meta[4].jsonPrimitive.long),
+                            User(
+                                user[0].jsonPrimitive.int,
+                                user[1].jsonPrimitive.content,
+                                if (!medal.isEmpty()) Medal(
+                                    medal[0].jsonPrimitive.int,
+                                    medal[1].jsonPrimitive.content,
+                                    medal[2].jsonPrimitive.content,
+                                    medal[3].jsonPrimitive.int,
+                                    Color(medal[4].jsonPrimitive.int)
+                                ) else null,
+                                UserLevel(
+                                    userLevel[0].jsonPrimitive.int,
+                                    Color(userLevel[2].jsonPrimitive.int),
+                                    userLevel[3].jsonPrimitive.content
+                                ),
+                                userTitle[0].jsonPrimitive.content to userTitle[1].jsonPrimitive.content
+                            )
                         )
-                    )
-                } else {
-                    throw InvalidFormatException(p, "Can't deserialize to Danmu", node, Danmu::class.java)
+                    } else throw SerializationException("Can't deserialize")
                 }
+
+                override val descriptor: SerialDescriptor = serializer().descriptor
             }
         }
     }
 }
 
+@Serializable
 data class User(
     val id: Int,
     val name: String,
@@ -61,9 +84,11 @@ data class User(
     val title: Pair<String, String>
 )
 
-data class Medal(val level: Int, val name: String, val streamer: String, val roomId: Int, val color: Color)
+@Serializable
+data class Medal(val level: Int, val name: String, val streamer: String, val roomId: Int, @Contextual val color: Color)
 
-data class UserLevel(val level: Int, val color: Color, val rank: String)
+@Serializable
+data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String)
 
 enum class MessageType {
     /**
@@ -99,5 +124,14 @@ enum class MessageType {
     LIVE_INTERACTIVE_GAME,
     ONLINE_RANK_V2,
     ONLINE_RANK_COUNT,
-    HOT_RANK_CHANGED
+    HOT_RANK_CHANGED;
+
+    companion object {
+        @OptIn(ExperimentalStdlibApi::class)
+        private val byName: Map<String, MessageType> = buildMap {
+            values().forEach { put(it.name, it) }
+        }
+
+        fun valueOf(name: String) = byName.getValue(name)
+    }
 }

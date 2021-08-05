@@ -1,39 +1,46 @@
 package io.github.settingdust.bilive.danmaku
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer
-import io.github.settingdust.bilive.danmaku.Packet.Companion.send
 import io.ktor.http.cio.websocket.WebSocketSession
+import io.ktor.http.cio.websocket.send
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonElement
+
+internal interface Sendable {
+    val operation: Operation
+    val protocol: Protocol
+
+    companion object {
+        suspend fun WebSocketSession.send(sendable: Sendable) =
+            send(RawPacketFormat.encodeToByteArray(packetFormat.encodeToPacket(sendable)))
+    }
+}
 
 sealed class Body {
-    companion object {
-        suspend fun WebSocketSession.send(body: Body) =
-            send(body.packet())
-    }
-
-    open fun packet(): Packet {
-        throw UnsupportedOperationException("Shouldn't send")
-    }
-
     /**
      * @see [Operation.AUTH]
      */
+    @Serializable
     data class Authentication(
         val uid: Int = 0,
         val roomId: Int,
-        val protoVer: ProtocolVersion = ProtocolVersion.INFLATE,
+        val protoVer: Protocol = Protocol.Inflate,
         val platform: String = "web",
         val type: Int = 2
-    ) : Body() {
-        override fun packet(): Packet = Packet(protoVer, Operation.AUTH, objectMapper.writeValueAsBytes(this))
+    ) : Body(), Sendable {
+        override val operation: Operation = Operation.AUTH
+        override val protocol: Protocol = protoVer
     }
 
     /**
      * @see [Operation.AUTH_REPLY]
      */
+    @Serializable
     data class AuthenticationReply constructor(
         /**
          * 0    - Success
@@ -41,23 +48,24 @@ sealed class Body {
          */
         val code: Code
     ) : Body() {
-        companion object {
-            @JsonDeserialize(using = Code.Deserializer::class)
-            enum class Code(private val code: Int) {
-                SUCCESS(0), TOKEN_ERROR(-101);
+        @Serializable(with = Code.Serializer::class)
+        enum class Code(private val code: Int) {
+            SUCCESS(0), TOKEN_ERROR(-101);
 
-                companion object {
-                    private val byCode: Map<Int, Code> = values().associateBy { it.code }
+            companion object {
+                private val byCode: Map<Int, Code> = values().associateBy { it.code }
 
-                    fun valueOf(code: Int) = byCode.getValue(code)
-                }
+                fun valueOf(code: Int) = byCode.getValue(code)
+            }
 
-                class Deserializer(clazz: Class<Code>? = null) :
-                    StdDeserializer<Code>(clazz) {
-                    override fun deserialize(p: JsonParser, ctxt: DeserializationContext?): Code {
-                        val node = p.codec.readTree<JsonNode>(p)
-                        return valueOf(node.asInt())
-                    }
+            object Serializer : KSerializer<Code> {
+                override fun deserialize(decoder: Decoder): Code = valueOf(decoder.decodeInt())
+
+                override val descriptor: SerialDescriptor
+                    get() = PrimitiveSerialDescriptor("AuthenticationReply.Code", PrimitiveKind.INT)
+
+                override fun serialize(encoder: Encoder, value: Code) {
+                    encoder.encodeInt(value.code)
                 }
             }
         }
@@ -66,19 +74,22 @@ sealed class Body {
     /**
      * @see [Operation.HEARTBEAT]
      */
-    object Heartbeat : Body() {
-        override fun packet(): Packet = Packet(ProtocolVersion.INFLATE, Operation.HEARTBEAT, ByteArray(0))
+    object Heartbeat : Body(), Sendable {
+        override val operation: Operation = Operation.HEARTBEAT
+        override val protocol: Protocol = Protocol.Inflate
     }
 
     /**
      * @see [Operation.HEARTBEAT_REPLY]
      */
+    @Serializable
     data class HeartbeatReply(val popularity: Int) : Body()
 
+    @Serializable
     data class Unknown(val body: ByteArray) : Body() {
         override fun toString() = String(body)
 
-        fun node(): JsonNode = objectMapper.readTree(body)
+        fun node(): JsonElement = jsonFormat.parseToJsonElement(toString())
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true

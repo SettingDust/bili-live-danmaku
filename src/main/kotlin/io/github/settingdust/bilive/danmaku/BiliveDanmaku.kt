@@ -1,33 +1,55 @@
 package io.github.settingdust.bilive.danmaku
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.PropertyNamingStrategies
-import com.fasterxml.jackson.module.kotlin.convertValue
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import io.github.settingdust.bilive.danmaku.Body.Companion.send
 import io.github.settingdust.bilive.danmaku.MessageType.DANMU_MSG
 import io.github.settingdust.bilive.danmaku.Operation.AUTH_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.HEARTBEAT_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.SEND_MSG_REPLY
+import io.github.settingdust.bilive.danmaku.Sendable.Companion.send
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.features.websocket.WebSockets
 import io.ktor.client.features.websocket.wss
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import java.math.BigInteger
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.contextual
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
-val objectMapper = jacksonObjectMapper().apply {
-    setSerializationInclusion(JsonInclude.Include.NON_NULL)
-    propertyNamingStrategy = PropertyNamingStrategies.LOWER_CASE
+suspend fun main() {
+    val danmaku = BiliveDanmaku(currentCoroutineContext())
+    danmaku.connect(5050).consumeEach {
+        println(it)
+    }
 }
+
+internal val jsonFormat = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+    allowStructuredMapKeys = true
+    serializersModule = SerializersModule {
+        contextual(DateAsLongSerializer)
+        contextual(ColorAsIntSerializer)
+        contextual(Message.Danmu.Serializer.Json)
+    }
+}
+
+internal val packetFormat = PacketFormat(
+    serializersModule = SerializersModule {
+        contextual(DateAsLongSerializer)
+        contextual(ColorAsIntSerializer)
+        contextual(Message.Danmu.Serializer.Packet)
+    }
+)
 
 class BiliveDanmaku(override val coroutineContext: CoroutineContext) : CoroutineScope {
     private val client = HttpClient(CIO) {
@@ -35,7 +57,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun connect(roomId: Int) = produce<Body> {
+    fun connect(roomId: Int) = produce {
         // TODO Fetch id from https://api.live.bilibili.com/room/v1/Room/get_info?room_id=5050
         // TODO Fetch from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=5050
         client.wss(
@@ -47,26 +69,24 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                 runBlocking { send(Body.Heartbeat) }
             }
             for (frame in incoming) {
-                val packets = frame.buffer.packets()
+                val packets = RawPacketsFormat.decodeFromByteArray(frame.data)
                 for (packet in packets) {
                     when (packet.operation) {
-                        HEARTBEAT_REPLY -> Body.HeartbeatReply(BigInteger(packet.body).toInt())
-                        AUTH_REPLY -> objectMapper.readValue<Body.AuthenticationReply>(packet.body)
+                        HEARTBEAT_REPLY -> packetFormat.decodeFromPacket<Body.HeartbeatReply>(packet)
+                        AUTH_REPLY -> packetFormat.decodeFromPacket<Body.AuthenticationReply>(packet)
                         SEND_MSG_REPLY -> {
-                            val node = withContext(Dispatchers.IO) {
-                                @Suppress("BlockingMethodInNonBlockingContext") objectMapper.readTree(packet.body)
-                            }
+                            val element = jsonFormat.decodeFromString<JsonElement>(String(packet.body)).jsonObject
                             try {
-                                when (objectMapper.convertValue<MessageType>(node["cmd"])) {
-                                    DANMU_MSG -> objectMapper.readValue<Message.Danmu>(packet.body)
-                                    else -> Body.Unknown(packet.body)
+                                when (MessageType.valueOf(element["cmd"]?.jsonPrimitive?.content ?: "")) {
+                                    DANMU_MSG -> packetFormat.decodeFromPacket<Message.Danmu>(packet)
+                                    else -> packetFormat.decodeFromPacket<Body.Unknown>(packet)
                                 }
                             } catch (e: IllegalArgumentException) {
-                                Body.Unknown(packet.body)
+                                packetFormat.decodeFromPacket<Body.Unknown>(packet)
                             }
                         }
-                        else -> Body.Unknown(packet.body)
-                    }.let { channel.send(it) }
+                        else -> packetFormat.decodeFromPacket<Body.Unknown>(packet)
+                    }.let { send(it) }
                 }
             }
         }

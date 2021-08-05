@@ -1,95 +1,198 @@
 package io.github.settingdust.bilive.danmaku
 
 import com.aayushatharva.brotli4j.Brotli4jLoader
-import com.aayushatharva.brotli4j.decoder.Decoder
-import com.aayushatharva.brotli4j.encoder.Encoder
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.SerializerProvider
-import com.fasterxml.jackson.databind.annotation.JsonSerialize
-import com.fasterxml.jackson.databind.ser.std.StdSerializer
-import io.github.settingdust.bilive.danmaku.Operation.Companion.putOperation
-import io.github.settingdust.bilive.danmaku.ProtocolVersion.Companion.putBodyType
-import io.ktor.http.cio.websocket.WebSocketSession
-import io.ktor.http.cio.websocket.send
-import io.ktor.util.InternalAPI
-import io.ktor.util.moveToByteArray
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialFormat
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.AbstractDecoder
+import kotlinx.serialization.encoding.AbstractEncoder
+import kotlinx.serialization.encoding.CompositeDecoder
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.modules.EmptySerializersModule
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.serializer
+import java.io.ByteArrayOutputStream
+import java.io.DataOutput
+import java.io.DataOutputStream
 import java.nio.ByteBuffer
 import java.util.zip.DeflaterInputStream
 import java.util.zip.InflaterInputStream
 import java.util.zip.ZipException
 
-fun ByteBuffer.packets(): List<Packet> {
-    val packets = mutableListOf<Packet>()
-    val packet = Packet(this)
-    try {
-        val buffer = ByteBuffer.wrap(packet.body)
-        while (buffer.hasRemaining()) {
-            packets += Packet(buffer)
-        }
-    } catch (e: Exception) {
-        if (packets.isEmpty()) packets += packet
-    }
-    return packets
-}
+internal fun ByteBuffer.getBytes(length: Int) = ByteArray(length).also { get(it) }
 
-data class Packet(
-    var length: Int,
-    val headerLength: Short = HEADER_LENGTH,
-    val protocolVersion: ProtocolVersion,
-    val operation: Operation,
-    val sequence: Int = SEQUENCE_ID,
-    var body: ByteArray
-) {
-    companion object {
-        const val HEADER_LENGTH: Short = 16
-        const val SEQUENCE_ID: Int = 1
-
-        suspend fun WebSocketSession.send(packet: Packet) = send(packet.buffer())
-
-        @OptIn(InternalAPI::class)
-        suspend fun WebSocketSession.send(buffer: ByteBuffer) = send(buffer.moveToByteArray())
-    }
-
-    @OptIn(InternalAPI::class)
-    constructor(buffer: ByteBuffer) : this(
-        buffer.int,
-        buffer.short,
-        ProtocolVersion.valueOf(buffer.short),
-        Operation.valueOf(buffer.int),
-        buffer.int,
-        ByteArray(0)
-    ) {
-        body = buffer.getBytes(length - headerLength)
-        runBlocking {
-            try {
-                body = protocolVersion.decode(body)
-            } catch (e: ZipException) {
-                // e.printStack()
+@OptIn(ExperimentalSerializationApi::class)
+internal object RawPacketFormat : SerialFormat {
+    fun decodeFromByteArray(bytes: ByteBuffer) = runBlocking {
+        bytes.run {
+            Packet(
+                length = int,
+                headerLength = short,
+                protocolVersion = Protocol.valueOf(short),
+                operation = Operation.values()[int],
+                sequence = int
+            ).apply {
+                body = getBytes(length)
+                try {
+                    body = protocolVersion.decode(body)
+                } catch (e: ZipException) {
+                }
             }
         }
     }
 
-    constructor(protocolVersion: ProtocolVersion, operation: Operation, body: ByteArray) : this(
-        0,
-        protocolVersion = protocolVersion,
-        operation = operation,
-        body = body
-    ) {
-        length = headerLength + this.body.size
+    fun encodeToByteArray(value: Packet): ByteArray =
+        value.run {
+            val data = runBlocking { protocolVersion.encode(body) }
+            val length = headerLength + data.size
+            ByteBuffer.wrap(ByteArray(length))
+                .putInt(length)
+                .putShort(headerLength)
+                .putShort(protocolVersion.version)
+                .putInt(operation.operation)
+                .putInt(sequence)
+                .put(runBlocking { protocolVersion.encode(body) })
+                .array()
+        }
+
+    override val serializersModule: SerializersModule
+        get() = EmptySerializersModule
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+internal object RawPacketsFormat : SerialFormat {
+    @OptIn(ExperimentalStdlibApi::class)
+    fun decodeFromByteArray(bytes: ByteArray) = ByteBuffer.wrap(bytes)
+        .run {
+            RawPacketFormat.decodeFromByteArray(this).let {
+                buildList {
+                    val buffer = ByteBuffer.wrap(it.body)
+                    try {
+                        while (buffer.hasRemaining()) add(RawPacketFormat.decodeFromByteArray(buffer))
+                    } catch (e: Exception) {
+                        if (isEmpty()) add(it)
+                    }
+                }
+            }
+        }
+
+    override val serializersModule: SerializersModule
+        get() = EmptySerializersModule
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+internal class PacketFormat(override val serializersModule: SerializersModule = EmptySerializersModule) : SerialFormat {
+    fun <T : Sendable> encodeToPacket(serializer: SerializationStrategy<T>, value: T): Packet {
+        val stream = ByteArrayOutputStream()
+        val output = DataOutputStream(stream)
+        val encoder = Encoder(output, serializersModule)
+        encoder.encodeSerializableValue(serializer, value)
+        return RawPacketFormat.decodeFromByteArray(ByteBuffer.wrap(stream.toByteArray()))
     }
 
-    suspend fun buffer(): ByteBuffer {
-        val data = protocolVersion.encode(body)
-        length = headerLength + data.size
-        return ByteBuffer.wrap(ByteArray(length))
-            .putInt(length)
-            .putShort(headerLength)
-            .putBodyType(protocolVersion)
-            .putOperation(operation)
-            .putInt(sequence)
-            .put(data)
-            .also { it.position(0) }
+    fun <T : Body> decodeFromPacket(serializer: DeserializationStrategy<T>, packet: Packet): T {
+        val buffer = ByteBuffer.wrap(packet.body)
+        val decoder = Decoder(buffer, serializersModule)
+        return decoder.decodeSerializableValue(serializer)
+    }
+
+    inline fun <reified T : Sendable> encodeToPacket(value: T): Packet = encodeToPacket(serializer(), value)
+
+    inline fun <reified T : Body> decodeFromPacket(packet: Packet): T = decodeFromPacket(serializer(), packet)
+
+    class Encoder(
+        private val output: DataOutput,
+        override val serializersModule: SerializersModule
+    ) : AbstractEncoder() {
+        override fun encodeInt(value: Int) {
+            output.writeInt(value)
+        }
+
+        override fun encodeShort(value: Short) {
+            output.writeShort(value.toInt())
+        }
+
+        override fun encodeLong(value: Long) {
+            output.writeLong(value)
+        }
+
+        override fun encodeBoolean(value: Boolean) = encodeShort(if (value) 1 else 0)
+
+        override fun encodeByte(value: Byte) {
+            output.writeByte(value.toInt())
+        }
+
+        override fun encodeChar(value: Char) {
+            output.writeChar(value.code)
+        }
+
+        override fun encodeDouble(value: Double) {
+            output.writeDouble(value)
+        }
+
+        override fun encodeEnum(enumDescriptor: SerialDescriptor, index: Int) = encodeInt(index)
+
+        override fun encodeFloat(value: Float) {
+            output.writeFloat(value)
+        }
+
+        override fun encodeString(value: String) {
+            output.write(value.toByteArray())
+        }
+    }
+
+    class Decoder(
+        private val buffer: ByteBuffer,
+        override val serializersModule: SerializersModule
+    ) : AbstractDecoder() {
+        private var elementIndex = 0
+
+        override fun decodeBoolean(): Boolean = buffer.short == 1.toShort()
+
+        override fun decodeByte(): Byte = buffer.get()
+
+        override fun decodeChar(): Char = buffer.char
+
+        override fun decodeDouble(): Double = buffer.double
+
+        override fun decodeEnum(enumDescriptor: SerialDescriptor): Int = decodeInt()
+
+        override fun decodeFloat(): Float = buffer.float
+
+        override fun decodeInt(): Int = buffer.int
+
+        override fun decodeLong(): Long = buffer.long
+
+        override fun decodeShort(): Short = buffer.short
+
+        override fun decodeString(): String = String(buffer.getBytes(buffer.remaining()))
+
+        override fun decodeElementIndex(descriptor: SerialDescriptor): Int {
+            if (elementIndex == descriptor.elementsCount) return CompositeDecoder.DECODE_DONE
+            return elementIndex++
+        }
+    }
+}
+
+data class Packet(
+    var length: Int = 0,
+    val headerLength: Short = HEADER_LENGTH,
+    val protocolVersion: Protocol,
+    val operation: Operation,
+    val sequence: Int = SEQUENCE_ID,
+    var body: ByteArray = ByteArray(0)
+) {
+    companion object {
+        const val HEADER_LENGTH: Short = 16
+        const val SEQUENCE_ID: Int = 1
     }
 
     override fun equals(other: Any?): Boolean {
@@ -119,91 +222,101 @@ data class Packet(
     }
 }
 
-enum class Operation(private val operation: Int) {
-    HANDSHAKE(0),
-    HANDSHAKE_REPLY(1),
+enum class Operation {
+    HANDSHAKE,
+    HANDSHAKE_REPLY,
 
     /**
      * @see [Body.Heartbeat]
      */
-    HEARTBEAT(2), // 心跳
+    HEARTBEAT, // 心跳
 
     /**
      * @see [Body.HeartbeatReply]
      */
-    HEARTBEAT_REPLY(3), // 心跳回应
-    SEND_MSG(4),
+    HEARTBEAT_REPLY, // 心跳回应
+    SEND_MSG,
 
     /**
      * @see [MessageType]
      */
-    SEND_MSG_REPLY(5),
-    DISCONNECT_REPLY(6),
+    SEND_MSG_REPLY,
+    DISCONNECT_REPLY,
 
     /**
      * @see [Body.Authentication]
      */
-    AUTH(7), // 验证消息，第一个数据包，发送 roomId
+    AUTH, // 验证消息，第一个数据包，发送 roomId
 
     /**
      * @see [Body.AuthenticationReply]
      */
-    AUTH_REPLY(8), // 验证回应
-    RAW(9),
-    PROTO_READY(10),
-    PROTO_FINISH(11),
-    CHANGE_ROOM(12),
-    CHANGE_ROOM_REPLY(13),
-    REGISTER(14),
-    REGISTER_REPLY(15),
-    UNREGISTER(16),
-    UNREGISTER_REPLY(17);
+    AUTH_REPLY, // 验证回应
+    RAW,
+    PROTO_READY,
+    PROTO_FINISH,
+    CHANGE_ROOM,
+    CHANGE_ROOM_REPLY,
+    REGISTER,
+    REGISTER_REPLY,
+    UNREGISTER,
+    UNREGISTER_REPLY;
 
-    companion object {
-        private val byOperation: Map<Int, Operation> = values().associateBy { it.operation }
-
-        fun valueOf(operation: Int) = byOperation.getValue(operation)
-
-        fun ByteBuffer.putOperation(operation: Operation): ByteBuffer = putInt(operation.operation)
-    }
+    val operation: Int = ordinal
 }
 
-@JsonSerialize(using = ProtocolVersion.Companion.Serializer::class)
-enum class ProtocolVersion(
-    private val version: Short,
-    val encode: suspend (ByteArray) -> ByteArray = { it },
-    val decode: suspend (ByteArray) -> ByteArray = { it }
+@Serializable(with = Protocol.Serializer::class)
+sealed class Protocol(
+    val version: Short
 ) {
-    INFLATE(0), // JSON 纯文本
-    NORMAL(1),
-    DEFLATE(
-        2,
-        { data -> data.inputStream().use { source -> DeflaterInputStream(source).use { it.readBytes() } } },
-        { data -> data.inputStream().use { source -> InflaterInputStream(source).use { it.readBytes() } } }
-    ),
-    BROTLI(
-        3,
-        { Encoder.compress(it) },
-        { Decoder.decompress(it).decompressedData ?: throw IllegalStateException("Brotli decompress failed") }
-    ); // 需要 brotli 解压
+    open fun encode(bytes: ByteArray) = bytes
+    open fun decode(bytes: ByteArray) = bytes
 
-    init {
-        Brotli4jLoader.ensureAvailability()
+    /**
+     * Plain Json
+     */
+    object Inflate : Protocol(0)
+
+    /**
+     * @see Body.HeartbeatReply
+     */
+    object Normal : Protocol(1)
+
+    /**
+     * Data compressed
+     */
+    object Deflate : Protocol(2) {
+        override fun encode(bytes: ByteArray): ByteArray =
+            bytes.inputStream().use { src -> DeflaterInputStream(src).use { it.readBytes() } }
+
+        override fun decode(bytes: ByteArray): ByteArray =
+            bytes.inputStream().use { src -> InflaterInputStream(src).use { it.readBytes() } }
+    }
+
+    /**
+     * Data compressed with Brotli
+     */
+    object Brotli : Protocol(3) {
+        init {
+            Brotli4jLoader.ensureAvailability()
+        }
+
+        override fun encode(bytes: ByteArray): ByteArray = com.aayushatharva.brotli4j.encoder.Encoder.compress(bytes)
+        override fun decode(bytes: ByteArray) =
+            requireNotNull(com.aayushatharva.brotli4j.decoder.Decoder.decompress(bytes).decompressedData)
     }
 
     companion object {
-        private val byVersion: Map<Short, ProtocolVersion> = values().associateBy { it.version }
+        private val byVersion: Map<Short, Protocol> = setOf(Inflate, Normal, Deflate, Brotli).associateBy { it.version }
 
         fun valueOf(version: Short) = byVersion.getValue(version)
+    }
 
-        fun ByteBuffer.putBodyType(protocolVersion: ProtocolVersion): ByteBuffer = putShort(protocolVersion.version)
+    object Serializer : KSerializer<Protocol> {
+        override fun deserialize(decoder: Decoder): Protocol = valueOf(decoder.decodeShort())
 
-        class Serializer(clazz: Class<ProtocolVersion>? = null) : StdSerializer<ProtocolVersion>(clazz) {
-            override fun serialize(value: ProtocolVersion, gen: JsonGenerator, provider: SerializerProvider?) {
-                gen.writeNumber(value.version)
-            }
-        }
+        override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Protocol", PrimitiveKind.SHORT)
+
+        override fun serialize(encoder: Encoder, value: Protocol) = encoder.encodeShort(value.version)
     }
 }
-
-internal fun ByteBuffer.getBytes(length: Int) = ByteArray(length).also { get(it) }
