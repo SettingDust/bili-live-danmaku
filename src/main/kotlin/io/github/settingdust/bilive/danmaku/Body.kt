@@ -2,22 +2,38 @@ package io.github.settingdust.bilive.danmaku
 
 import io.ktor.http.cio.websocket.WebSocketSession
 import io.ktor.http.cio.websocket.send
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonContentPolymorphicSerializer
 import kotlinx.serialization.json.JsonElement
 
 internal interface Sendable {
-    val operation: Operation
-    val protocol: Protocol
+    var operation: Operation
+    var protocol: Protocol
 
     companion object {
         suspend fun WebSocketSession.send(sendable: Sendable) =
-            send(RawPacketFormat.encodeToByteArray(packetFormat.encodeToPacket(sendable)))
+            send(
+                RawPacketFormat.encodeToByteArray(
+                    packetFormat.encodeToPacket(
+                        PolymorphicSerializer,
+                        sendable
+                    )
+                )
+            )
+    }
+
+    object PolymorphicSerializer : JsonContentPolymorphicSerializer<Sendable>(Sendable::class) {
+        override fun selectDeserializer(element: JsonElement): DeserializationStrategy<out Sendable> =
+            throw UnsupportedOperationException("Shouldn't be sent")
     }
 }
 
@@ -28,13 +44,13 @@ sealed class Body {
     @Serializable
     data class Authentication(
         val uid: Int = 0,
-        val roomId: Int,
-        val protoVer: Protocol = Protocol.Inflate,
+        @SerialName("roomid") val roomId: Int,
+        @SerialName("protover") val protoVer: Protocol = Protocol.Inflate,
         val platform: String = "web",
         val type: Int = 2
     ) : Body(), Sendable {
-        override val operation: Operation = Operation.AUTH
-        override val protocol: Protocol = protoVer
+        override var operation: Operation = Operation.AUTH
+        override var protocol: Protocol = protoVer
     }
 
     /**
@@ -58,7 +74,7 @@ sealed class Body {
                 fun valueOf(code: Int) = byCode.getValue(code)
             }
 
-            object Serializer : KSerializer<Code> {
+            internal object Serializer : KSerializer<Code> {
                 override fun deserialize(decoder: Decoder): Code = valueOf(decoder.decodeInt())
 
                 override val descriptor: SerialDescriptor
@@ -74,18 +90,35 @@ sealed class Body {
     /**
      * @see [Operation.HEARTBEAT]
      */
+    @Serializable
     object Heartbeat : Body(), Sendable {
-        override val operation: Operation = Operation.HEARTBEAT
-        override val protocol: Protocol = Protocol.Inflate
+        override var operation: Operation = Operation.HEARTBEAT
+        override var protocol: Protocol = Protocol.Inflate
+
+        internal object Serializer : BodySerializer<Heartbeat> {
+            override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Body.Heartbeat") {
+
+            }
+
+            override fun serialize(encoder: Encoder, value: Heartbeat) {
+            }
+        }
     }
 
     /**
      * @see [Operation.HEARTBEAT_REPLY]
      */
-    @Serializable
-    data class HeartbeatReply(val popularity: Int) : Body()
+    @Serializable(with = HeartbeatReply.Serializer::class)
+    data class HeartbeatReply(val popularity: Int) : Body() {
+        object Serializer : BodySerializer<HeartbeatReply> {
+            override val descriptor: SerialDescriptor =
+                PrimitiveSerialDescriptor("Body.HeartbeatReply", PrimitiveKind.INT)
 
-    @Serializable
+            override fun deserialize(decoder: Decoder): HeartbeatReply = HeartbeatReply(decoder.decodeInt())
+        }
+    }
+
+    @Serializable(with = Unknown.Serializer::class)
     data class Unknown(val body: ByteArray) : Body() {
         override fun toString() = String(body)
 
@@ -104,6 +137,15 @@ sealed class Body {
 
         override fun hashCode(): Int {
             return body.contentHashCode()
+        }
+
+        object Serializer : BodySerializer<Unknown> {
+            override val descriptor: SerialDescriptor =
+                PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)
+
+            override fun deserialize(decoder: Decoder): Unknown {
+                return Unknown(decoder.decodeString().toByteArray())
+            }
         }
     }
 }

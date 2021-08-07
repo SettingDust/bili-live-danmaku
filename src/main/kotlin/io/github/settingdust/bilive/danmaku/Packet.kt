@@ -7,6 +7,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialFormat
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
@@ -36,13 +37,13 @@ internal object RawPacketFormat : SerialFormat {
             Packet(
                 length = int,
                 headerLength = short,
-                protocolVersion = Protocol.valueOf(short),
+                protocol = Protocol.valueOf(short),
                 operation = Operation.values()[int],
                 sequence = int
             ).apply {
-                body = getBytes(length)
+                body = getBytes(length - headerLength)
                 try {
-                    body = protocolVersion.decode(body)
+                    body = protocol.decode(body)
                 } catch (e: ZipException) {
                 }
             }
@@ -51,15 +52,15 @@ internal object RawPacketFormat : SerialFormat {
 
     fun encodeToByteArray(value: Packet): ByteArray =
         value.run {
-            val data = runBlocking { protocolVersion.encode(body) }
+            val data = runBlocking { protocol.encode(body) }
             val length = headerLength + data.size
             ByteBuffer.wrap(ByteArray(length))
                 .putInt(length)
                 .putShort(headerLength)
-                .putShort(protocolVersion.version)
+                .putShort(protocol.version)
                 .putInt(operation.operation)
                 .putInt(sequence)
-                .put(runBlocking { protocolVersion.encode(body) })
+                .put(runBlocking { protocol.encode(body) })
                 .array()
         }
 
@@ -95,13 +96,26 @@ internal class PacketFormat(override val serializersModule: SerializersModule = 
         val output = DataOutputStream(stream)
         val encoder = Encoder(output, serializersModule)
         encoder.encodeSerializableValue(serializer, value)
-        return RawPacketFormat.decodeFromByteArray(ByteBuffer.wrap(stream.toByteArray()))
+        val header = ByteArray(Packet.HEADER_LENGTH.toInt())
+        val body = value.protocol.encode(stream.toByteArray())
+        ByteBuffer.wrap(header)
+            .putInt(body.size + Packet.HEADER_LENGTH)
+            .putShort(Packet.HEADER_LENGTH)
+            .putShort(value.protocol.version)
+            .putInt(value.operation.operation)
+            .putInt(Packet.SEQUENCE_ID)
+        return RawPacketFormat.decodeFromByteArray(ByteBuffer.wrap(header + body))
     }
 
     fun <T : Body> decodeFromPacket(serializer: DeserializationStrategy<T>, packet: Packet): T {
         val buffer = ByteBuffer.wrap(packet.body)
         val decoder = Decoder(buffer, serializersModule)
-        return decoder.decodeSerializableValue(serializer)
+        val result = decoder.decodeSerializableValue(serializer)
+        if (result is Sendable) {
+            result.protocol = packet.protocol
+            result.operation = packet.operation
+        }
+        return result
     }
 
     inline fun <reified T : Sendable> encodeToPacket(value: T): Packet = encodeToPacket(serializer(), value)
@@ -147,6 +161,10 @@ internal class PacketFormat(override val serializersModule: SerializersModule = 
         override fun encodeString(value: String) {
             output.write(value.toByteArray())
         }
+
+        override fun <T> encodeSerializableValue(serializer: SerializationStrategy<T>, value: T) {
+            encodeString(jsonFormat.encodeToString(serializer, value))
+        }
     }
 
     class Decoder(
@@ -179,13 +197,22 @@ internal class PacketFormat(override val serializersModule: SerializersModule = 
             if (elementIndex == descriptor.elementsCount) return CompositeDecoder.DECODE_DONE
             return elementIndex++
         }
+
+        override fun <T> decodeSerializableValue(deserializer: DeserializationStrategy<T>): T =
+            try {
+                buffer.mark()
+                jsonFormat.decodeFromString(deserializer, decodeString())
+            } catch (e: SerializationException) {
+                buffer.reset()
+                super.decodeSerializableValue(deserializer)
+            }
     }
 }
 
 data class Packet(
     var length: Int = 0,
     val headerLength: Short = HEADER_LENGTH,
-    val protocolVersion: Protocol,
+    val protocol: Protocol,
     val operation: Operation,
     val sequence: Int = SEQUENCE_ID,
     var body: ByteArray = ByteArray(0)
@@ -203,7 +230,7 @@ data class Packet(
 
         if (length != other.length) return false
         if (headerLength != other.headerLength) return false
-        if (protocolVersion != other.protocolVersion) return false
+        if (protocol != other.protocol) return false
         if (operation != other.operation) return false
         if (sequence != other.sequence) return false
         if (!body.contentEquals(other.body)) return false
@@ -214,7 +241,7 @@ data class Packet(
     override fun hashCode(): Int {
         var result = length
         result = 31 * result + headerLength
-        result = 31 * result + protocolVersion.hashCode()
+        result = 31 * result + protocol.hashCode()
         result = 31 * result + operation.hashCode()
         result = 31 * result + sequence
         result = 31 * result + body.contentHashCode()
@@ -307,7 +334,15 @@ sealed class Protocol(
     }
 
     companion object {
-        private val byVersion: Map<Short, Protocol> = setOf(Inflate, Normal, Deflate, Brotli).associateBy { it.version }
+        // Use lazy due to https://youtrack.jetbrains.com/issue/KT-8970
+        private val byVersion: Map<Short, Protocol> by lazy {
+            setOf(
+                Inflate,
+                Normal,
+                Deflate,
+                Brotli
+            ).associateBy { it.version }
+        }
 
         fun valueOf(version: Short) = byVersion.getValue(version)
     }

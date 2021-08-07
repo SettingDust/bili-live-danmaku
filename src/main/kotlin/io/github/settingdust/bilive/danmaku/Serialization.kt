@@ -9,7 +9,7 @@ import kotlinx.serialization.encoding.Encoder
 import java.awt.Color
 import java.util.Date
 
-internal interface MessageSerializer<T : Message> : KSerializer<T> {
+internal interface BodySerializer<T : Body> : KSerializer<T> {
     override fun deserialize(decoder: Decoder): T = throw UnsupportedOperationException("Shouldn't be deserialized")
 
     override fun serialize(encoder: Encoder, value: T) {

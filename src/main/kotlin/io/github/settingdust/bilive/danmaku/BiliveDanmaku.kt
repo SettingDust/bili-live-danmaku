@@ -11,9 +11,7 @@ import io.ktor.client.features.websocket.WebSockets
 import io.ktor.client.features.websocket.wss
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -22,24 +20,24 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
-
-suspend fun main() {
-    val danmaku = BiliveDanmaku(currentCoroutineContext())
-    danmaku.connect(5050).consumeEach {
-        println(it)
-    }
-}
 
 internal val jsonFormat = Json {
     ignoreUnknownKeys = true
     coerceInputValues = true
     allowStructuredMapKeys = true
+    classDiscriminator = ""
     serializersModule = SerializersModule {
         contextual(DateAsLongSerializer)
         contextual(ColorAsIntSerializer)
-        contextual(Message.Danmu.Serializer.Json)
+        polymorphic(Sendable::class) {
+            default { Sendable.PolymorphicSerializer }
+            subclass(Body.Authentication::class)
+            subclass(Body.Heartbeat::class)
+        }
     }
 }
 

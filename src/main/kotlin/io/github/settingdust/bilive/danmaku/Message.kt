@@ -3,7 +3,6 @@ package io.github.settingdust.bilive.danmaku
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonDecoder
@@ -19,7 +18,7 @@ sealed class Message : Body() {
     /**
      * @see [MessageType.DANMU_MSG]
      */
-    @Serializable
+    @Serializable(with = Danmu.Serializer.Packet::class)
     data class Danmu(
         val content: String,
         @Contextual val color: Color,
@@ -27,13 +26,14 @@ sealed class Message : Body() {
         val sender: User
     ) : Message() {
         internal object Serializer {
-            object Packet : MessageSerializer<Danmu> {
+            object Packet : BodySerializer<Danmu> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
-                override fun deserialize(decoder: Decoder): Danmu = jsonFormat.decodeFromString(decoder.decodeString())
+                override fun deserialize(decoder: Decoder): Danmu =
+                    jsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
-            object Json : MessageSerializer<Danmu> {
+            object Json : BodySerializer<Danmu> {
                 override fun deserialize(decoder: Decoder): Danmu {
                     require(decoder is JsonDecoder)
                     val element = decoder.decodeJsonElement().jsonObject
@@ -90,6 +90,7 @@ data class Medal(val level: Int, val name: String, val streamer: String, val roo
 @Serializable
 data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String)
 
+@Serializable
 enum class MessageType {
     /**
      * @see [Message.Danmu]
