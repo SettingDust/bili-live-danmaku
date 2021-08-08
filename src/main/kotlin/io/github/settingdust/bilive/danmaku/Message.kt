@@ -56,7 +56,9 @@ sealed class Message : Body() {
                                     medal[1].jsonPrimitive.content,
                                     medal[2].jsonPrimitive.content,
                                     medal[3].jsonPrimitive.int,
-                                    Color(medal[4].jsonPrimitive.int)
+                                    Color(medal[4].jsonPrimitive.int),
+                                    Medal.Type.values()[medal[10].jsonPrimitive.int],
+                                    medal[11].jsonPrimitive.int == 1
                                 ) else null,
                                 UserLevel(
                                     userLevel[0].jsonPrimitive.int,
@@ -85,7 +87,19 @@ data class User(
 )
 
 @Serializable
-data class Medal(val level: Int, val name: String, val streamer: String, val roomId: Int, @Contextual val color: Color)
+data class Medal(
+    val level: Int,
+    val name: String,
+    val streamer: String,
+    val roomId: Int,
+    @Contextual val color: Color,
+    val type: Type,
+    val activated: Boolean
+) {
+    enum class Type {
+        NORMAL, GOVERNOR, ADMIRAL, CAPTAIN
+    }
+}
 
 @Serializable
 data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String)
