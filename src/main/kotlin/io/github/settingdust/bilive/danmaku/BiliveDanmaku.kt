@@ -12,6 +12,7 @@ import io.ktor.client.features.websocket.wss
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.handleCoroutineException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -54,7 +55,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
         install(WebSockets)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.InternalCoroutinesApi::class)
     fun connect(roomId: Int) = produce {
         // TODO Fetch id from https://api.live.bilibili.com/room/v1/Room/get_info?room_id=5050
         // TODO Fetch from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=5050
@@ -64,7 +65,11 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
         ) {
             send(Body.Authentication(roomId = roomId))
             timer("damaku heartbeat", period = 30 * 1000L) {
-                runBlocking { send(Body.Heartbeat) }
+                try {
+                    runBlocking { send(Body.Heartbeat) }
+                } catch (t: Throwable) {
+                    handleCoroutineException(coroutineContext, t)
+                }
             }
             for (frame in incoming) {
                 val packets = RawPacketsFormat.decodeFromByteArray(frame.data)
