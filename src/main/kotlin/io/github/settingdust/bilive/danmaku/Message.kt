@@ -66,12 +66,12 @@ sealed class Message : Body() {
                                     Medal.Type.values()[medal[10].jsonPrimitive.int],
                                     medal[11].jsonPrimitive.int == 1
                                 ) else null,
-                                UserLevel(
+                                level = UserLevel(
                                     userLevel[0].jsonPrimitive.int,
                                     Color(userLevel[2].jsonPrimitive.int),
                                     userLevel[3].jsonPrimitive.content
                                 ),
-                                userTitle[0].jsonPrimitive.content to userTitle[1].jsonPrimitive.content
+                                title = userTitle[0].jsonPrimitive.content to userTitle[1].jsonPrimitive.content
                             )
                         )
                     } else throw SerializationException("Can't deserialize")
@@ -129,7 +129,8 @@ sealed class Message : Body() {
                                     endColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
                                     type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
                                     activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
-                                ) else null
+                                ) else null,
+                                data["face"]!!.jsonPrimitive.content
                             ),
                             Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
                             data["num"]!!.jsonPrimitive.int,
@@ -153,6 +154,7 @@ data class User(
     val id: Int,
     val name: String,
     val medal: Medal? = null,
+    val avatar: String? = null,
     val level: UserLevel? = null,
     val title: Pair<String, String>? = null
 )
