@@ -6,12 +6,14 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import java.awt.Color
+import java.time.Instant
 import java.util.Date
 
 sealed class Message : Body() {
@@ -21,8 +23,8 @@ sealed class Message : Body() {
     @Serializable(with = Danmu.Serializer.Packet::class)
     data class Danmu(
         val content: String,
-        @Contextual val color: Color,
-        @Contextual val timestamp: Date,
+        val color: Color,
+        val timestamp: Date,
         val sender: User
     ) : Message() {
         internal object Serializer {
@@ -57,6 +59,9 @@ sealed class Message : Body() {
                                     medal[2].jsonPrimitive.content,
                                     medal[3].jsonPrimitive.int,
                                     Color(medal[4].jsonPrimitive.int),
+                                    Color(medal[7].jsonPrimitive.int),
+                                    Color(medal[8].jsonPrimitive.int),
+                                    Color(medal[9].jsonPrimitive.int),
                                     Medal.Type.values()[medal[10].jsonPrimitive.int],
                                     medal[11].jsonPrimitive.int == 1
                                 ) else null,
@@ -75,6 +80,69 @@ sealed class Message : Body() {
             }
         }
     }
+
+    @Serializable(with = SendGift.Serializer.Packet::class)
+    data class SendGift(
+        val sender: User,
+        val timestamp: Instant,
+        val number: Int,
+        val giftId: Int,
+        val giftName: String,
+        val totalNumber: Int,
+        val price: Int,
+        val coinType: CoinType,
+        val isFirst: Boolean
+    ) : Message() {
+        enum class CoinType {
+            SILVER, GOLD;
+        }
+
+        internal object Serializer {
+            object Packet : BodySerializer<SendGift> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+
+                override fun deserialize(decoder: Decoder): SendGift =
+                    jsonFormat.decodeFromString(Json, decoder.decodeString())
+            }
+
+            object Json : BodySerializer<SendGift> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+
+                override fun deserialize(decoder: Decoder): SendGift {
+                    require(decoder is JsonDecoder)
+                    val element = decoder.decodeJsonElement().jsonObject
+                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SEND_GIFT.name, true)) {
+                        val data = element["data"]!!.jsonObject
+                        val medal = element["medal_info"]?.jsonObject
+                        return SendGift(
+                            User(
+                                data["uid"]!!.jsonPrimitive.int,
+                                data["uname"]!!.jsonPrimitive.content,
+                                if (medal != null) Medal(
+                                    medal["medal_level"]!!.jsonPrimitive.int,
+                                    medal["medal_name"]!!.jsonPrimitive.content,
+                                    color = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                    borderColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                    startColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                    endColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                    type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
+                                    activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
+                                ) else null
+                            ),
+                            Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
+                            data["num"]!!.jsonPrimitive.int,
+                            data["giftId"]!!.jsonPrimitive.int,
+                            data["giftName"]!!.jsonPrimitive.content,
+                            data["super_gift_num"]!!.jsonPrimitive.int,
+                            data["price"]!!.jsonPrimitive.int,
+                            CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
+                            data["is_first"]!!.jsonPrimitive.boolean
+                        )
+                    } else throw SerializationException("Can't deserialize")
+                }
+            }
+        }
+    }
 }
 
 @Serializable
@@ -82,17 +150,20 @@ data class User(
     val id: Int,
     val name: String,
     val medal: Medal? = null,
-    val level: UserLevel,
-    val title: Pair<String, String>
+    val level: UserLevel? = null,
+    val title: Pair<String, String>? = null
 )
 
 @Serializable
 data class Medal(
     val level: Int,
     val name: String,
-    val streamer: String,
-    val roomId: Int,
+    val streamer: String? = null,
+    val roomId: Int? = null,
     @Contextual val color: Color,
+    @Contextual val borderColor: Color,
+    @Contextual val startColor: Color,
+    @Contextual val endColor: Color,
     val type: Type,
     val activated: Boolean
 ) {
@@ -106,11 +177,20 @@ data class UserLevel(val level: Int, @Contextual val color: Color, val rank: Str
 
 @Serializable
 enum class MessageType {
+    LIVE, // 开播
+    PREPARING, // 下播
+
     /**
-     * @see [Message.Danmu]
+     * 弹幕
+     * @see Message.Danmu
      */
     DANMU_MSG,
-    SEND_GIFT, // 礼物
+
+    /**
+     * 礼物
+     * @see Message.SendGift
+     */
+    SEND_GIFT,
     GUARD_BUY, // 上舰
     SUPER_CHAT_MESSAGE, // 醒目留言
     SUPER_CHAT_MESSAGE_DELETE, // 删除醒目留言
@@ -129,10 +209,8 @@ enum class MessageType {
     SUPER_CHAT_MESSAGE_JPN,
     USER_TOAST_MSG,
     ROOM_BLOCK_MSG,
-    LIVE,
-    PREPARING,
     ROOM_ADMIN_ENTRANCE,
-    ROOM_ADMINS,
+    ROOM_ADMINS, // 房管列表
     ROOM_CHANGE,
     STOP_LIVE_ROOM_LIST,
     WIDGET_BANNER,

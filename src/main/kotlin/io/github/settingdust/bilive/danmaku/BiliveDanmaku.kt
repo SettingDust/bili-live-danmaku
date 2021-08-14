@@ -1,6 +1,7 @@
 package io.github.settingdust.bilive.danmaku
 
 import io.github.settingdust.bilive.danmaku.MessageType.DANMU_MSG
+import io.github.settingdust.bilive.danmaku.MessageType.SEND_GIFT
 import io.github.settingdust.bilive.danmaku.Operation.AUTH_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.HEARTBEAT_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.SEND_MSG_REPLY
@@ -11,6 +12,7 @@ import io.ktor.client.features.websocket.WebSockets
 import io.ktor.client.features.websocket.wss
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.handleCoroutineException
 import kotlinx.coroutines.runBlocking
@@ -25,6 +27,10 @@ import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
+
+fun main() = runBlocking {
+    BiliveDanmaku(coroutineContext).connect(64458).consumeEach { println(it) }
+}
 
 internal val jsonFormat = Json {
     ignoreUnknownKeys = true
@@ -82,6 +88,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                             try {
                                 when (MessageType.valueOf(element["cmd"]?.jsonPrimitive?.content ?: "")) {
                                     DANMU_MSG -> packetFormat.decodeFromPacket<Message.Danmu>(packet)
+                                    SEND_GIFT -> packetFormat.decodeFromPacket<Message.SendGift>(packet)
                                     else -> packetFormat.decodeFromPacket<Body.Unknown>(packet)
                                 }
                             } catch (e: IllegalArgumentException) {
