@@ -8,6 +8,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -91,7 +92,8 @@ sealed class Message : Body() {
         val totalNumber: Int,
         val price: Int,
         val coinType: CoinType,
-        val isFirst: Boolean
+        val isFirst: Boolean,
+        val medalStreamerId: Int?
     ) : Message() {
         enum class CoinType {
             SILVER, GOLD;
@@ -136,7 +138,8 @@ sealed class Message : Body() {
                             data["super_gift_num"]!!.jsonPrimitive.int,
                             data["price"]!!.jsonPrimitive.int,
                             CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
-                            data["is_first"]!!.jsonPrimitive.boolean
+                            data["is_first"]!!.jsonPrimitive.boolean,
+                            medal?.get("target_id")?.jsonPrimitive?.intOrNull
                         )
                     } else throw SerializationException("Can't deserialize")
                 }
