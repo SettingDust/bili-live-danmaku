@@ -184,7 +184,6 @@ sealed class Message : Body() {
                 override fun deserialize(decoder: Decoder): SuperChat {
                     require(decoder is JsonDecoder)
                     val element = decoder.decodeJsonElement().jsonObject
-                    println(element)
                     if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SUPER_CHAT_MESSAGE.name, true)) {
                         val data = element["data"]!!.jsonObject
                         val userInfo = data["user_info"]!!.jsonObject
@@ -227,7 +226,7 @@ sealed class Message : Body() {
                                 data["background_image"]!!.jsonPrimitive.content,
                                 Color.decode(data["background_price_color"]!!.jsonPrimitive.content)
                             )
-                        ).also { println(it) }
+                        )
                     } else throw SerializationException("Can't deserialize")
                 }
             }
