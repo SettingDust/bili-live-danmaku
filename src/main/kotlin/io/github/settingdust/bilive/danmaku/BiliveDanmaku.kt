@@ -30,8 +30,8 @@ import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
 fun main() = runBlocking {
-    BiliveDanmaku(coroutineContext).connect(21452505).consumeEach {
-        // println(it)
+    BiliveDanmaku(coroutineContext).connect(5050).consumeEach {
+        println(it)
     }
 }
 

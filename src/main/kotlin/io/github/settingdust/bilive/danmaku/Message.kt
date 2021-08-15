@@ -117,7 +117,7 @@ sealed class Message : Body() {
                     val element = decoder.decodeJsonElement().jsonObject
                     if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SEND_GIFT.name, true)) {
                         val data = element["data"]!!.jsonObject
-                        val medal = element["medal_info"]?.jsonObject
+                        val medal = data["medal_info"]?.jsonObject
                         return SendGift(
                             User(
                                 data["uid"]!!.jsonPrimitive.int,
