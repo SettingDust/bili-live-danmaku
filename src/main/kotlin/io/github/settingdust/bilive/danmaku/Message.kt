@@ -126,9 +126,9 @@ sealed class Message : Body() {
                                     medal["medal_level"]!!.jsonPrimitive.int,
                                     medal["medal_name"]!!.jsonPrimitive.content,
                                     color = Color(medal["medal_color"]!!.jsonPrimitive.int),
-                                    borderColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
-                                    startColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
-                                    endColor = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                    borderColor = Color(medal["medal_color_border"]!!.jsonPrimitive.int),
+                                    startColor = Color(medal["medal_color_start"]!!.jsonPrimitive.int),
+                                    endColor = Color(medal["medal_color_end"]!!.jsonPrimitive.int),
                                     type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
                                     activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
                                 ) else null,
@@ -145,6 +145,87 @@ sealed class Message : Body() {
                             medal?.get("target_id")?.jsonPrimitive?.intOrNull,
                             data["tid"]!!.jsonPrimitive.content.toBigInteger()
                         )
+                    } else throw SerializationException("Can't deserialize")
+                }
+            }
+        }
+    }
+
+    @Serializable(with = SuperChat.Serializer.Packet::class)
+    data class SuperChat(
+        val sender: User,
+        val content: String,
+        val color: Color,
+        val price: Int,
+        val startTime: Instant,
+        val endTime: Instant,
+        val background: Background
+    ) : Message() {
+        data class Background(
+            val color: Color,
+            val bottomColor: Color,
+            val endColor: Color,
+            val startColor: Color,
+            val image: String,
+            val priceColor: Color
+        )
+
+        internal object Serializer {
+            object Packet : BodySerializer<SuperChat> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+
+                override fun deserialize(decoder: Decoder): SuperChat =
+                    jsonFormat.decodeFromString(Json, decoder.decodeString())
+            }
+
+            object Json : BodySerializer<SuperChat> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+
+                override fun deserialize(decoder: Decoder): SuperChat {
+                    require(decoder is JsonDecoder)
+                    val element = decoder.decodeJsonElement().jsonObject
+                    println(element)
+                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SUPER_CHAT_MESSAGE.name, true)) {
+                        val data = element["data"]!!.jsonObject
+                        val userInfo = data["user_info"]!!.jsonObject
+                        val medal = data["medal_info"]?.jsonObject
+                        return SuperChat(
+                            User(
+                                data["uid"]!!.jsonPrimitive.int,
+                                userInfo["uname"]!!.jsonPrimitive.content,
+                                if (medal != null && medal["target_id"]?.jsonPrimitive?.int != 0)
+                                    Medal(
+                                        medal["medal_level"]!!.jsonPrimitive.int,
+                                        medal["medal_name"]!!.jsonPrimitive.content,
+                                        medal["anchor_uname"]!!.jsonPrimitive.content,
+                                        medal["anchor_roomid"]!!.jsonPrimitive.int,
+                                        Color.decode(medal["medal_color"]!!.jsonPrimitive.content),
+                                        Color(medal["medal_color_border"]!!.jsonPrimitive.int),
+                                        Color(medal["medal_color_start"]!!.jsonPrimitive.int),
+                                        Color(medal["medal_color_end"]!!.jsonPrimitive.int),
+                                        Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
+                                        medal["is_lighted"]!!.jsonPrimitive.int == 1
+                                    ) else null,
+                                userInfo["face"]!!.jsonPrimitive.content,
+                                UserLevel(
+                                    userInfo["user_level"]!!.jsonPrimitive.int,
+                                    Color.decode(userInfo["level_color"]!!.jsonPrimitive.content)
+                                )
+                            ),
+                            data["message"]!!.jsonPrimitive.content,
+                            Color.decode(data["message_font_color"]!!.jsonPrimitive.content),
+                            data["price"]!!.jsonPrimitive.int,
+                            Instant.ofEpochSecond(data["start_time"]!!.jsonPrimitive.long),
+                            Instant.ofEpochSecond(data["end_time"]!!.jsonPrimitive.long),
+                            Background(
+                                Color.decode(data["background_color"]!!.jsonPrimitive.content),
+                                Color.decode(data["background_bottom_color"]!!.jsonPrimitive.content),
+                                Color.decode(data["background_color_end"]!!.jsonPrimitive.content),
+                                Color.decode(data["background_color_start"]!!.jsonPrimitive.content),
+                                data["background_image"]!!.jsonPrimitive.content,
+                                Color.decode(data["background_price_color"]!!.jsonPrimitive.content)
+                            )
+                        ).also { println(it) }
                     } else throw SerializationException("Can't deserialize")
                 }
             }
@@ -181,7 +262,7 @@ data class Medal(
 }
 
 @Serializable
-data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String)
+data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String? = null)
 
 @Serializable
 enum class MessageType {
@@ -199,14 +280,14 @@ enum class MessageType {
      * @see Message.SendGift
      */
     SEND_GIFT,
+    COMBO_SEND,
     GUARD_BUY, // 上舰
     SUPER_CHAT_MESSAGE, // 醒目留言
     SUPER_CHAT_MESSAGE_DELETE, // 删除醒目留言
-    INTERACT_WORD,
+    INTERACT_WORD, // 用户进入
     ROOM_BANNER,
     ROOM_REAL_TIME_MESSAGE_UPDATE,
     NOTICE_MSG,
-    COMBO_SEND,
     COMBO_END,
     ENTRY_EFFECT,
     WELCOME_GUARD,

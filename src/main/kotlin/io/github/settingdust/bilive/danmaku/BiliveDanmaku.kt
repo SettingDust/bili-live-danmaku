@@ -2,6 +2,7 @@ package io.github.settingdust.bilive.danmaku
 
 import io.github.settingdust.bilive.danmaku.MessageType.DANMU_MSG
 import io.github.settingdust.bilive.danmaku.MessageType.SEND_GIFT
+import io.github.settingdust.bilive.danmaku.MessageType.SUPER_CHAT_MESSAGE
 import io.github.settingdust.bilive.danmaku.Operation.AUTH_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.HEARTBEAT_REPLY
 import io.github.settingdust.bilive.danmaku.Operation.SEND_MSG_REPLY
@@ -29,8 +30,8 @@ import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
 fun main() = runBlocking {
-    BiliveDanmaku(coroutineContext).connect(10545).consumeEach {
-        println(it)
+    BiliveDanmaku(coroutineContext).connect(21452505).consumeEach {
+        // println(it)
     }
 }
 
@@ -91,6 +92,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                                 when (MessageType.valueOf(element["cmd"]?.jsonPrimitive?.content ?: "")) {
                                     DANMU_MSG -> packetFormat.decodeFromPacket<Message.Danmu>(packet)
                                     SEND_GIFT -> packetFormat.decodeFromPacket<Message.SendGift>(packet)
+                                    SUPER_CHAT_MESSAGE -> packetFormat.decodeFromPacket<Message.SuperChat>(packet)
                                     else -> packetFormat.decodeFromPacket<Body.Unknown>(packet)
                                 }
                             } catch (e: IllegalArgumentException) {
