@@ -29,7 +29,9 @@ import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
 fun main() = runBlocking {
-    BiliveDanmaku(coroutineContext).connect(64458).consumeEach { println(it) }
+    BiliveDanmaku(coroutineContext).connect(10545).consumeEach {
+        println(it)
+    }
 }
 
 internal val jsonFormat = Json {

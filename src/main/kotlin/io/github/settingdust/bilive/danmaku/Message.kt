@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import java.awt.Color
+import java.math.BigInteger
 import java.time.Instant
 import java.util.Date
 
@@ -93,7 +94,8 @@ sealed class Message : Body() {
         val price: Int,
         val coinType: CoinType,
         val isFirst: Boolean,
-        val medalStreamerId: Int?
+        val medalStreamerId: Int?,
+        val id: BigInteger
     ) : Message() {
         enum class CoinType {
             SILVER, GOLD;
@@ -140,7 +142,8 @@ sealed class Message : Body() {
                             data["price"]!!.jsonPrimitive.int,
                             CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
                             data["is_first"]!!.jsonPrimitive.boolean,
-                            medal?.get("target_id")?.jsonPrimitive?.intOrNull
+                            medal?.get("target_id")?.jsonPrimitive?.intOrNull,
+                            data["tid"]!!.jsonPrimitive.content.toBigInteger()
                         )
                     } else throw SerializationException("Can't deserialize")
                 }
