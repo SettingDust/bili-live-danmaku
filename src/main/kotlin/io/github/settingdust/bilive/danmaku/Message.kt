@@ -189,6 +189,7 @@ sealed class Message : Body() {
                         val data = element["data"]!!.jsonObject
                         val userInfo = data["user_info"]!!.jsonObject
                         val medal = data["medal_info"]?.jsonObject
+                        val title = userInfo["title"]!!.jsonPrimitive.content
                         return SuperChat(
                             User(
                                 data["uid"]!!.jsonPrimitive.int,
@@ -210,7 +211,8 @@ sealed class Message : Body() {
                                 UserLevel(
                                     userInfo["user_level"]!!.jsonPrimitive.int,
                                     Color.decode(userInfo["level_color"]!!.jsonPrimitive.content)
-                                )
+                                ),
+                                if (title != "0") title to "" else null
                             ),
                             data["message"]!!.jsonPrimitive.content,
                             Color.decode(data["message_font_color"]!!.jsonPrimitive.content),
