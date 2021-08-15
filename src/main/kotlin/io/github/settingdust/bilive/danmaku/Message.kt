@@ -122,16 +122,17 @@ sealed class Message : Body() {
                             User(
                                 data["uid"]!!.jsonPrimitive.int,
                                 data["uname"]!!.jsonPrimitive.content,
-                                if (medal != null) Medal(
-                                    medal["medal_level"]!!.jsonPrimitive.int,
-                                    medal["medal_name"]!!.jsonPrimitive.content,
-                                    color = Color(medal["medal_color"]!!.jsonPrimitive.int),
-                                    borderColor = Color(medal["medal_color_border"]!!.jsonPrimitive.int),
-                                    startColor = Color(medal["medal_color_start"]!!.jsonPrimitive.int),
-                                    endColor = Color(medal["medal_color_end"]!!.jsonPrimitive.int),
-                                    type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
-                                    activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
-                                ) else null,
+                                if (medal != null && medal["target_id"]?.jsonPrimitive?.int != 0)
+                                    Medal(
+                                        medal["medal_level"]!!.jsonPrimitive.int,
+                                        medal["medal_name"]!!.jsonPrimitive.content,
+                                        color = Color(medal["medal_color"]!!.jsonPrimitive.int),
+                                        borderColor = Color(medal["medal_color_border"]!!.jsonPrimitive.int),
+                                        startColor = Color(medal["medal_color_start"]!!.jsonPrimitive.int),
+                                        endColor = Color(medal["medal_color_end"]!!.jsonPrimitive.int),
+                                        type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
+                                        activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
+                                    ) else null,
                                 data["face"]!!.jsonPrimitive.content
                             ),
                             Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
