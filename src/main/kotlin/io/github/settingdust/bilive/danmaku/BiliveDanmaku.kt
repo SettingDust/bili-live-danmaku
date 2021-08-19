@@ -9,25 +9,33 @@ import io.github.settingdust.bilive.danmaku.Operation.SEND_MSG_REPLY
 import io.github.settingdust.bilive.danmaku.Sendable.Companion.send
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.features.json.JsonFeature
+import io.ktor.client.features.json.serializer.KotlinxSerializer
 import io.ktor.client.features.websocket.WebSockets
 import io.ktor.client.features.websocket.wss
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.handleCoroutineException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
-import kotlinx.serialization.modules.polymorphic
-import kotlinx.serialization.modules.subclass
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
+
+internal val packetFormat = PacketFormat(
+    jsonFormat,
+    SerializersModule {
+        contextual(DateAsLongSerializer)
+        contextual(ColorAsIntSerializer)
+    }
+)
 
 fun main() = runBlocking {
     BiliveDanmaku(coroutineContext).connect(5050).consumeEach {
@@ -35,39 +43,22 @@ fun main() = runBlocking {
     }
 }
 
-internal val jsonFormat = Json {
-    ignoreUnknownKeys = true
-    coerceInputValues = true
-    allowStructuredMapKeys = true
-    classDiscriminator = ""
-    serializersModule = SerializersModule {
-        contextual(DateAsLongSerializer)
-        contextual(ColorAsIntSerializer)
-        polymorphic(Sendable::class) {
-            default { Sendable.PolymorphicSerializer }
-            subclass(Body.Authentication::class)
-            subclass(Body.Heartbeat::class)
-        }
-    }
-}
-
-internal val packetFormat = PacketFormat(
-    serializersModule = SerializersModule {
-        contextual(DateAsLongSerializer)
-        contextual(ColorAsIntSerializer)
-        contextual(Message.Danmu.Serializer.Packet)
-    }
-)
-
 class BiliveDanmaku(override val coroutineContext: CoroutineContext) : CoroutineScope {
     private val client = HttpClient(CIO) {
         install(WebSockets)
+        install(JsonFeature) {
+            serializer = KotlinxSerializer()
+        }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.InternalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class, InternalCoroutinesApi::class)
     fun connect(roomId: Int) = produce {
         // TODO Fetch id from https://api.live.bilibili.com/room/v1/Room/get_info?room_id=5050
-        // TODO Fetch from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=5050
+        // NOT REQUIRED 2021-8-18 Fetch token from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=$roomId
+        // val token = client.get<JsonElement>("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=$roomId")
+        //     .jsonObject["data"]!!
+        //     .jsonObject["token"]!!
+        //     .jsonPrimitive.content
         client.wss(
             host = "broadcastlv.chat.bilibili.com",
             path = "/sub"
@@ -81,7 +72,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                 }
             }
             for (frame in incoming) {
-                val packets = RawPacketsFormat.decodeFromByteArray(frame.data)
+                val packets = PacketFrameFormat.decodeFromByteBuffer(frame.buffer)
                 for (packet in packets) {
                     when (packet.operation) {
                         HEARTBEAT_REPLY -> packetFormat.decodeFromPacket<Body.HeartbeatReply>(packet)

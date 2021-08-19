@@ -2,38 +2,59 @@ package io.github.settingdust.bilive.danmaku
 
 import io.ktor.http.cio.websocket.WebSocketSession
 import io.ktor.http.cio.websocket.send
-import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonContentPolymorphicSerializer
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.contextual
+import kotlinx.serialization.modules.polymorphic
+import kotlinx.serialization.modules.subclass
 
+internal val jsonFormat: Json by lazy {
+    Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        allowStructuredMapKeys = true
+        classDiscriminator = ""
+        serializersModule = SerializersModule {
+            contextual(DateAsLongSerializer)
+            contextual(ColorAsIntSerializer)
+            polymorphic(Sendable::class) {
+                default { Sendable.Serializer }
+                subclass(Body.Authentication.serializer())
+                subclass(Body.Heartbeat.serializer())
+            }
+        }
+    }
+}
+
+@Suppress("SpellCheckingInspection")
 internal interface Sendable {
     var operation: Operation
     var protocol: Protocol
 
     companion object {
+        private val packetFormat = PacketFormat(jsonFormat, SerializersModule {
+            contextual(DateAsLongSerializer)
+            contextual(ColorAsIntSerializer)
+        })
+
         suspend fun WebSocketSession.send(sendable: Sendable) =
-            send(
-                RawPacketFormat.encodeToByteArray(
-                    packetFormat.encodeToPacket(
-                        PolymorphicSerializer,
-                        sendable
-                    )
-                )
-            )
+            send(BinaryPacketFormat.encodeToByteArray(packetFormat.encodeToPacket(Serializer, sendable)))
     }
 
-    object PolymorphicSerializer : JsonContentPolymorphicSerializer<Sendable>(Sendable::class) {
-        override fun selectDeserializer(element: JsonElement): DeserializationStrategy<out Sendable> =
-            throw UnsupportedOperationException("Shouldn't be sent")
+    object Serializer : JsonContentPolymorphicSerializer<Sendable>(Sendable::class) {
+        override fun selectDeserializer(element: JsonElement) = throw UnsupportedOperationException("Shouldn't be sent")
     }
 }
 
@@ -43,13 +64,17 @@ sealed class Body {
      */
     @Serializable
     data class Authentication(
+        @SerialName("clientver") val clientVer: String = "2.0.11",
         val uid: Int = 0,
         @SerialName("roomid") val roomId: Int,
-        @SerialName("protover") val protoVer: Protocol = Protocol.Inflate,
+        @SerialName("protover") val protoVer: Protocol = Protocol.Normal,
         val platform: String = "web",
         val type: Int = 2
     ) : Body(), Sendable {
+        @Transient
         override var operation: Operation = Operation.AUTH
+
+        @Transient
         override var protocol: Protocol = protoVer
     }
 
@@ -92,17 +117,11 @@ sealed class Body {
      */
     @Serializable
     object Heartbeat : Body(), Sendable {
+        @Transient
         override var operation: Operation = Operation.HEARTBEAT
+
+        @Transient
         override var protocol: Protocol = Protocol.Inflate
-
-        internal object Serializer : BodySerializer<Heartbeat> {
-            override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Body.Heartbeat") {
-
-            }
-
-            override fun serialize(encoder: Encoder, value: Heartbeat) {
-            }
-        }
     }
 
     /**
@@ -110,7 +129,7 @@ sealed class Body {
      */
     @Serializable(with = HeartbeatReply.Serializer::class)
     data class HeartbeatReply(val popularity: Int) : Body() {
-        object Serializer : BodySerializer<HeartbeatReply> {
+        object Serializer : BSerializer<HeartbeatReply> {
             override val descriptor: SerialDescriptor =
                 PrimitiveSerialDescriptor("Body.HeartbeatReply", PrimitiveKind.INT)
 
@@ -139,7 +158,7 @@ sealed class Body {
             return body.contentHashCode()
         }
 
-        object Serializer : BodySerializer<Unknown> {
+        object Serializer : BSerializer<Unknown> {
             override val descriptor: SerialDescriptor =
                 PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)
 

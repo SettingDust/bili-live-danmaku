@@ -1,19 +1,25 @@
 package io.github.settingdust.bilive.danmaku
 
-import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.descriptors.element
 import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.serializer
 import java.awt.Color
+import java.io.UnsupportedEncodingException
 import java.math.BigInteger
 import java.time.Instant
 import java.util.Date
@@ -30,52 +36,25 @@ sealed class Message : Body() {
         val sender: User
     ) : Message() {
         internal object Serializer {
-            object Packet : BodySerializer<Danmu> {
+            object Packet : BSerializer<Danmu> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): Danmu =
                     jsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
-            object Json : BodySerializer<Danmu> {
-                override fun deserialize(decoder: Decoder): Danmu {
-                    require(decoder is JsonDecoder)
-                    val element = decoder.decodeJsonElement().jsonObject
-                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.DANMU_MSG.name, true)) {
-                        val info = element["info"]!!.jsonArray
-                        val meta = info[0].jsonArray
-                        val user = info[2].jsonArray
-                        val medal = info[3].jsonArray
-                        val userLevel = info[4].jsonArray
-                        val userTitle = info[5].jsonArray
-                        return Danmu(
-                            info[1].jsonPrimitive.content,
-                            Color(meta[3].jsonPrimitive.int),
-                            Date(meta[4].jsonPrimitive.long),
-                            User(
-                                user[0].jsonPrimitive.int,
-                                user[1].jsonPrimitive.content,
-                                if (!medal.isEmpty()) Medal(
-                                    medal[0].jsonPrimitive.int,
-                                    medal[1].jsonPrimitive.content,
-                                    medal[2].jsonPrimitive.content,
-                                    medal[3].jsonPrimitive.int,
-                                    Color(medal[4].jsonPrimitive.int),
-                                    Color(medal[7].jsonPrimitive.int),
-                                    Color(medal[8].jsonPrimitive.int),
-                                    Color(medal[9].jsonPrimitive.int),
-                                    Medal.Type.values()[medal[10].jsonPrimitive.int],
-                                    medal[11].jsonPrimitive.int == 1
-                                ) else null,
-                                level = UserLevel(
-                                    userLevel[0].jsonPrimitive.int,
-                                    Color(userLevel[2].jsonPrimitive.int),
-                                    userLevel[3].jsonPrimitive.content
-                                ),
-                                title = userTitle[0].jsonPrimitive.content to userTitle[1].jsonPrimitive.content
-                            )
-                        )
-                    } else throw SerializationException("Can't deserialize")
+            object Json : MessageSerializer<Danmu> {
+                override val type: MessageType = MessageType.DANMU_MSG
+
+                override fun deserialize(json: JsonObject, decoder: JsonDecoder): Danmu {
+                    val info = json["info"]!!.jsonArray
+                    val meta = info[0].jsonArray
+                    return Danmu(
+                        info[1].jsonPrimitive.content,
+                        Color(meta[3].jsonPrimitive.int),
+                        Date(meta[4].jsonPrimitive.long),
+                        decoder.json.decodeFromJsonElement(info)
+                    )
                 }
 
                 override val descriptor: SerialDescriptor = serializer().descriptor
@@ -85,6 +64,7 @@ sealed class Message : Body() {
 
     @Serializable(with = SendGift.Serializer.Packet::class)
     data class SendGift(
+        val id: BigInteger,
         val sender: User,
         val timestamp: Instant,
         val number: Int,
@@ -93,60 +73,39 @@ sealed class Message : Body() {
         val totalNumber: Int,
         val price: Int,
         val coinType: CoinType,
-        val isFirst: Boolean,
-        val medalStreamerId: Int?,
-        val id: BigInteger
+        val isFirst: Boolean
     ) : Message() {
         enum class CoinType {
             SILVER, GOLD;
         }
 
         internal object Serializer {
-            object Packet : BodySerializer<SendGift> {
+            object Packet : BSerializer<SendGift> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): SendGift =
                     jsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
-            object Json : BodySerializer<SendGift> {
+            object Json : MessageSerializer<SendGift> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
-                override fun deserialize(decoder: Decoder): SendGift {
-                    require(decoder is JsonDecoder)
-                    val element = decoder.decodeJsonElement().jsonObject
-                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SEND_GIFT.name, true)) {
-                        val data = element["data"]!!.jsonObject
-                        val medal = data["medal_info"]?.jsonObject
-                        return SendGift(
-                            User(
-                                data["uid"]!!.jsonPrimitive.int,
-                                data["uname"]!!.jsonPrimitive.content,
-                                if (medal != null && medal["target_id"]?.jsonPrimitive?.int != 0)
-                                    Medal(
-                                        medal["medal_level"]!!.jsonPrimitive.int,
-                                        medal["medal_name"]!!.jsonPrimitive.content,
-                                        color = Color(medal["medal_color"]!!.jsonPrimitive.int),
-                                        borderColor = Color(medal["medal_color_border"]!!.jsonPrimitive.int),
-                                        startColor = Color(medal["medal_color_start"]!!.jsonPrimitive.int),
-                                        endColor = Color(medal["medal_color_end"]!!.jsonPrimitive.int),
-                                        type = Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
-                                        activated = medal["is_lighted"]!!.jsonPrimitive.int == 1
-                                    ) else null,
-                                data["face"]!!.jsonPrimitive.content
-                            ),
-                            Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
-                            data["num"]!!.jsonPrimitive.int,
-                            data["giftId"]!!.jsonPrimitive.int,
-                            data["giftName"]!!.jsonPrimitive.content,
-                            data["super_gift_num"]!!.jsonPrimitive.int,
-                            data["price"]!!.jsonPrimitive.int,
-                            CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
-                            data["is_first"]!!.jsonPrimitive.boolean,
-                            medal?.get("target_id")?.jsonPrimitive?.intOrNull,
-                            data["tid"]!!.jsonPrimitive.content.toBigInteger()
-                        )
-                    } else throw SerializationException("Can't deserialize")
+                override val type: MessageType = MessageType.SEND_GIFT
+
+                override fun deserialize(json: JsonObject, decoder: JsonDecoder): SendGift {
+                    val data = json["data"]!!.jsonObject
+                    return SendGift(
+                        data["tid"]!!.jsonPrimitive.content.toBigInteger(),
+                        decoder.json.decodeFromJsonElement(data),
+                        Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
+                        data["num"]!!.jsonPrimitive.int,
+                        data["giftId"]!!.jsonPrimitive.int,
+                        data["giftName"]!!.jsonPrimitive.content,
+                        data["super_gift_num"]!!.jsonPrimitive.int,
+                        data["price"]!!.jsonPrimitive.int,
+                        CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
+                        data["is_first"]!!.jsonPrimitive.boolean
+                    )
                 }
             }
         }
@@ -162,6 +121,8 @@ sealed class Message : Body() {
         val endTime: Instant,
         val background: Background
     ) : Message() {
+
+        @Serializable(with = Background.Serializer::class)
         data class Background(
             val color: Color,
             val bottomColor: Color,
@@ -169,102 +130,53 @@ sealed class Message : Body() {
             val startColor: Color,
             val image: String,
             val priceColor: Color
-        )
+        ) {
+            internal object Serializer : JsonSerializer<Background> {
+                override val descriptor: SerialDescriptor = serializer().descriptor
+                override fun deserialize(decoder: JsonDecoder): Background {
+                    val json = decoder.decodeJsonElement().jsonObject
+                    val data = json["data"]!!.jsonObject
+                    return Background(
+                        Color.decode(data["background_color"]!!.jsonPrimitive.content),
+                        Color.decode(data["background_bottom_color"]!!.jsonPrimitive.content),
+                        Color.decode(data["background_color_end"]!!.jsonPrimitive.content),
+                        Color.decode(data["background_color_start"]!!.jsonPrimitive.content),
+                        data["background_image"]!!.jsonPrimitive.content,
+                        Color.decode(data["background_price_color"]!!.jsonPrimitive.content)
+                    )
+                }
+            }
+        }
 
         internal object Serializer {
-            object Packet : BodySerializer<SuperChat> {
+            object Packet : BSerializer<SuperChat> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): SuperChat =
                     jsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
-            object Json : BodySerializer<SuperChat> {
+            object Json : MessageSerializer<SuperChat> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
-                override fun deserialize(decoder: Decoder): SuperChat {
-                    require(decoder is JsonDecoder)
-                    val element = decoder.decodeJsonElement().jsonObject
-                    if (element["cmd"]?.jsonPrimitive?.content.equals(MessageType.SUPER_CHAT_MESSAGE.name, true)) {
-                        val data = element["data"]!!.jsonObject
-                        val userInfo = data["user_info"]!!.jsonObject
-                        val medal = data["medal_info"]?.jsonObject
-                        val title = userInfo["title"]!!.jsonPrimitive.content
-                        return SuperChat(
-                            User(
-                                data["uid"]!!.jsonPrimitive.int,
-                                userInfo["uname"]!!.jsonPrimitive.content,
-                                if (medal != null && medal["target_id"]?.jsonPrimitive?.int != 0)
-                                    Medal(
-                                        medal["medal_level"]!!.jsonPrimitive.int,
-                                        medal["medal_name"]!!.jsonPrimitive.content,
-                                        medal["anchor_uname"]!!.jsonPrimitive.content,
-                                        medal["anchor_roomid"]!!.jsonPrimitive.int,
-                                        Color.decode(medal["medal_color"]!!.jsonPrimitive.content),
-                                        Color(medal["medal_color_border"]!!.jsonPrimitive.int),
-                                        Color(medal["medal_color_start"]!!.jsonPrimitive.int),
-                                        Color(medal["medal_color_end"]!!.jsonPrimitive.int),
-                                        Medal.Type.values()[medal["guard_level"]!!.jsonPrimitive.int],
-                                        medal["is_lighted"]!!.jsonPrimitive.int == 1
-                                    ) else null,
-                                userInfo["face"]!!.jsonPrimitive.content,
-                                UserLevel(
-                                    userInfo["user_level"]!!.jsonPrimitive.int,
-                                    Color.decode(userInfo["level_color"]!!.jsonPrimitive.content)
-                                ),
-                                if (title != "0") title to "" else null
-                            ),
-                            data["message"]!!.jsonPrimitive.content,
-                            Color.decode(data["message_font_color"]!!.jsonPrimitive.content),
-                            data["price"]!!.jsonPrimitive.int,
-                            Instant.ofEpochSecond(data["start_time"]!!.jsonPrimitive.long),
-                            Instant.ofEpochSecond(data["end_time"]!!.jsonPrimitive.long),
-                            Background(
-                                Color.decode(data["background_color"]!!.jsonPrimitive.content),
-                                Color.decode(data["background_bottom_color"]!!.jsonPrimitive.content),
-                                Color.decode(data["background_color_end"]!!.jsonPrimitive.content),
-                                Color.decode(data["background_color_start"]!!.jsonPrimitive.content),
-                                data["background_image"]!!.jsonPrimitive.content,
-                                Color.decode(data["background_price_color"]!!.jsonPrimitive.content)
-                            )
-                        )
-                    } else throw SerializationException("Can't deserialize")
+                override val type: MessageType = MessageType.SUPER_CHAT_MESSAGE
+
+                override fun deserialize(json: JsonObject, decoder: JsonDecoder): SuperChat {
+                    val data = json["data"]!!.jsonObject
+                    return SuperChat(
+                        decoder.json.decodeFromJsonElement(data),
+                        data["message"]!!.jsonPrimitive.content,
+                        Color.decode(data["message_font_color"]!!.jsonPrimitive.content),
+                        data["price"]!!.jsonPrimitive.int,
+                        Instant.ofEpochSecond(data["start_time"]!!.jsonPrimitive.long),
+                        Instant.ofEpochSecond(data["end_time"]!!.jsonPrimitive.long),
+                        decoder.json.decodeFromJsonElement(data)
+                    )
                 }
             }
         }
     }
 }
-
-@Serializable
-data class User(
-    val id: Int,
-    val name: String,
-    val medal: Medal? = null,
-    val avatar: String? = null,
-    val level: UserLevel? = null,
-    val title: Pair<String, String>? = null
-)
-
-@Serializable
-data class Medal(
-    val level: Int,
-    val name: String,
-    val streamer: String? = null,
-    val roomId: Int? = null,
-    @Contextual val color: Color,
-    @Contextual val borderColor: Color,
-    @Contextual val startColor: Color,
-    @Contextual val endColor: Color,
-    val type: Type,
-    val activated: Boolean
-) {
-    enum class Type {
-        NORMAL, GOVERNOR, ADMIRAL, CAPTAIN
-    }
-}
-
-@Serializable
-data class UserLevel(val level: Int, @Contextual val color: Color, val rank: String? = null)
 
 @Serializable
 enum class MessageType {
@@ -317,5 +229,166 @@ enum class MessageType {
         }
 
         fun valueOf(name: String) = byName.getValue(name)
+    }
+}
+
+@Serializable(with = User.Serializer::class)
+data class User(
+    val id: Int,
+    val name: String,
+    val avatar: String? = null,
+    val level: UserLevel? = null,
+    val title: String? = null,
+    val medal: Medal? = null
+) {
+    internal object Serializer : JsonSerializer<User> {
+        override fun deserialize(decoder: JsonDecoder): User = when (val json = decoder.decodeJsonElement()) {
+            is JsonArray -> {
+                val userInfo = json[2].jsonArray
+                val userTitle = json[5].jsonArray
+                User(
+                    userInfo[0].jsonPrimitive.int,
+                    userInfo[1].jsonPrimitive.content,
+                    level = decoder.json.decodeFromJsonElementOrNull(json[4]),
+                    title = userTitle[0].jsonPrimitive.contentOrNull?.takeIf { it.isNotBlank() },
+                    medal = decoder.json.decodeFromJsonElementOrNull(json[3])
+                )
+            }
+            is JsonObject -> when {
+                json.containsKey("user_info") -> {
+                    val userInfo = json["user_info"]!!.jsonObject
+                    User(
+                        json["uid"]!!.jsonPrimitive.int,
+                        userInfo["uname"]!!.jsonPrimitive.content,
+                        userInfo["face"]!!.jsonPrimitive.content,
+                        decoder.json.decodeFromJsonElementOrNull(userInfo),
+                        userInfo["title"]!!.jsonPrimitive.content.takeIf { it.isNotBlank() && it != "0" },
+                        decoder.json.decodeFromJsonElementOrNull(json["medal_info"])
+                    )
+                }
+                else -> User(
+                    json["uid"]!!.jsonPrimitive.int,
+                    json["uname"]!!.jsonPrimitive.content,
+                    json["face"]!!.jsonPrimitive.content,
+                    medal = decoder.json.decodeFromJsonElementOrNull(json["medal_info"])
+                )
+            }
+            else -> throw UnsupportedEncodingException()
+        }
+
+        override val descriptor: SerialDescriptor = serializer<Medal>().descriptor
+    }
+}
+
+@Serializable(with = Medal.Serializer::class)
+data class Medal(
+    val level: Int,
+    val name: String,
+    val color: Color,
+    val borderColor: Color,
+    val startColor: Color,
+    val endColor: Color,
+    val guardType: GuardType,
+    val lighted: Boolean,
+    val anchorId: Int,
+    val anchorRoom: Int? = null,
+    val anchorName: String? = null
+) {
+
+    enum class GuardType {
+        NORMAL, GOVERNOR, ADMIRAL, CAPTAIN
+    }
+
+    internal object Serializer : JsonSerializer<Medal> {
+        override fun deserialize(decoder: JsonDecoder): Medal = when (val json = decoder.decodeJsonElement()) {
+            is JsonArray ->
+                when {
+                    json.isNotEmpty() ->
+                        Medal(
+                            json[0].jsonPrimitive.int,
+                            json[1].jsonPrimitive.content,
+                            Color(json[4].jsonPrimitive.int),
+                            Color(json[7].jsonPrimitive.int),
+                            Color(json[8].jsonPrimitive.int),
+                            Color(json[9].jsonPrimitive.int),
+                            GuardType.values()[json[10].jsonPrimitive.int],
+                            json[11].jsonPrimitive.int == 1,
+                            json[12].jsonPrimitive.int,
+                            json[3].jsonPrimitive.int,
+                            json[2].jsonPrimitive.content,
+                        )
+                    else -> throw UnsupportedEncodingException()
+                }
+            is JsonObject -> when {
+                json["target_id"]?.jsonPrimitive?.intOrNull == 0 -> throw UnsupportedEncodingException()
+                !json.containsKey("anchor_roomid") -> Medal(
+                    json["medal_level"]!!.jsonPrimitive.int,
+                    json["medal_name"]!!.jsonPrimitive.content,
+                    Color.decode(json["medal_color"]!!.jsonPrimitive.content),
+                    Color(json["medal_color_border"]!!.jsonPrimitive.int),
+                    Color(json["medal_color_start"]!!.jsonPrimitive.int),
+                    Color(json["medal_color_end"]!!.jsonPrimitive.int),
+                    GuardType.values()[json["guard_level"]!!.jsonPrimitive.int],
+                    json["is_lighted"]!!.jsonPrimitive.int == 1,
+                    json["target_id"]!!.jsonPrimitive.int,
+                )
+                else -> Medal(
+                    json["medal_level"]!!.jsonPrimitive.int,
+                    json["medal_name"]!!.jsonPrimitive.content,
+                    Color.decode(json["medal_color"]!!.jsonPrimitive.content),
+                    Color(json["medal_color_border"]!!.jsonPrimitive.int),
+                    Color(json["medal_color_start"]!!.jsonPrimitive.int),
+                    Color(json["medal_color_end"]!!.jsonPrimitive.int),
+                    GuardType.values()[json["guard_level"]!!.jsonPrimitive.int],
+                    json["is_lighted"]!!.jsonPrimitive.int == 1,
+                    json["target_id"]!!.jsonPrimitive.int,
+                    json["anchor_roomid"]!!.jsonPrimitive.int,
+                    json["anchor_uname"]!!.jsonPrimitive.content,
+                )
+            }
+            else -> throw UnsupportedEncodingException()
+        }
+
+        override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Medal") {
+            element<Int>("level")
+            element<String>("name")
+            element("color", ColorAsIntSerializer.descriptor)
+            element("borderColor", ColorAsIntSerializer.descriptor)
+            element("startColor", ColorAsIntSerializer.descriptor)
+            element("endColor", ColorAsIntSerializer.descriptor)
+            element<GuardType>("guardType")
+            element<Boolean>("lighted")
+            element<Int>("anchorId")
+            element<Int?>("anchorRoom")
+            element<String?>("anchorName")
+        }
+    }
+}
+
+@Serializable(with = UserLevel.Serializer::class)
+data class UserLevel(
+    val level: Int,
+    val color: Color,
+    val rank: String? = null
+) {
+    internal object Serializer : JsonSerializer<UserLevel> {
+        override val descriptor: SerialDescriptor = buildClassSerialDescriptor("UserLevel") {
+            element<Int>("level")
+            element("color", ColorAsIntSerializer.descriptor)
+            element<String?>("rank")
+        }
+
+        override fun deserialize(decoder: JsonDecoder): UserLevel = when (val json = decoder.decodeJsonElement()) {
+            is JsonObject -> UserLevel(
+                json["user_level"]!!.jsonPrimitive.int,
+                Color.decode(json["level_color"]!!.jsonPrimitive.content)
+            )
+            is JsonArray -> UserLevel(
+                json[0].jsonPrimitive.int,
+                Color(json[2].jsonPrimitive.int),
+                json[3].jsonPrimitive.content
+            )
+            else -> throw UnsupportedEncodingException()
+        }
     }
 }
