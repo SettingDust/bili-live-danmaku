@@ -20,7 +20,6 @@ import kotlinx.serialization.json.long
 import kotlinx.serialization.serializer
 import java.awt.Color
 import java.io.UnsupportedEncodingException
-import java.math.BigInteger
 import java.time.Instant
 
 sealed class Message : Body() {
@@ -63,7 +62,7 @@ sealed class Message : Body() {
 
     @Serializable(with = SendGift.Serializer.Packet::class)
     data class SendGift(
-        val id: BigInteger,
+        val id: ULong,
         val sender: User,
         val timestamp: Instant,
         val number: Int,
@@ -94,7 +93,7 @@ sealed class Message : Body() {
                 override fun deserialize(json: JsonObject, decoder: JsonDecoder): SendGift {
                     val data = json["data"]!!.jsonObject
                     return SendGift(
-                        data["tid"]!!.jsonPrimitive.content.toBigInteger(),
+                        data["tid"]!!.jsonPrimitive.content.toULong(),
                         decoder.json.decodeFromJsonElement(data),
                         Instant.ofEpochSecond(data["timestamp"]!!.jsonPrimitive.long),
                         data["num"]!!.jsonPrimitive.int,
