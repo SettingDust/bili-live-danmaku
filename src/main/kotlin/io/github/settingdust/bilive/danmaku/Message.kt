@@ -22,7 +22,6 @@ import java.awt.Color
 import java.io.UnsupportedEncodingException
 import java.math.BigInteger
 import java.time.Instant
-import java.util.Date
 
 sealed class Message : Body() {
     /**
@@ -32,7 +31,7 @@ sealed class Message : Body() {
     data class Danmu(
         val content: String,
         val color: Color,
-        val timestamp: Date,
+        val timestamp: Instant,
         val sender: User
     ) : Message() {
         internal object Serializer {
@@ -52,7 +51,7 @@ sealed class Message : Body() {
                     return Danmu(
                         info[1].jsonPrimitive.content,
                         Color(meta[3].jsonPrimitive.int),
-                        Date(meta[4].jsonPrimitive.long),
+                        Instant.ofEpochMilli(meta[4].jsonPrimitive.long),
                         decoder.json.decodeFromJsonElement(info)
                     )
                 }
