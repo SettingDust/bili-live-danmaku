@@ -31,6 +31,9 @@ sealed class Message : Body() {
         val content: String,
         val color: Color,
         val timestamp: Instant,
+        /**
+         * 不包含 avatar
+         */
         val sender: User
     ) : Message() {
         internal object Serializer {
@@ -63,6 +66,10 @@ sealed class Message : Body() {
     @Serializable(with = SendGift.Serializer.Packet::class)
     data class SendGift(
         val id: ULong,
+        /**
+         * User 不包含 title, level
+         * Medal 不包含 anchorRoom, anchorName
+         */
         val sender: User,
         val timestamp: Instant,
         val number: Int,
@@ -111,6 +118,9 @@ sealed class Message : Body() {
 
     @Serializable(with = SuperChat.Serializer.Packet::class)
     data class SuperChat(
+        /**
+         * 包含全部
+         */
         val sender: User,
         val content: String,
         val color: Color,
