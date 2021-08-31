@@ -329,10 +329,9 @@ data class Medal(
                 }
             is JsonObject -> when {
                 json["target_id"]?.jsonPrimitive?.intOrNull == 0 -> throw UnsupportedEncodingException()
-                json["anchor_roomid"]
+                (json["anchor_roomid"]
                     ?.jsonPrimitive
-                    ?.contentOrNull
-                    .isNullOrBlank()
+                    ?.intOrNull ?: 0) == 0
                 -> Medal(
                     json["medal_level"]!!.jsonPrimitive.int,
                     json["medal_name"]!!.jsonPrimitive.content,
