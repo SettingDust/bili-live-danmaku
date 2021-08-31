@@ -329,7 +329,11 @@ data class Medal(
                 }
             is JsonObject -> when {
                 json["target_id"]?.jsonPrimitive?.intOrNull == 0 -> throw UnsupportedEncodingException()
-                !json.containsKey("anchor_roomid") -> Medal(
+                json["anchor_roomid"]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    .isNullOrBlank()
+                -> Medal(
                     json["medal_level"]!!.jsonPrimitive.int,
                     json["medal_name"]!!.jsonPrimitive.content,
                     Color.decode(json["medal_color"]!!.jsonPrimitive.content),
