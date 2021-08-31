@@ -143,14 +143,13 @@ sealed class Message : Body() {
                 override val descriptor: SerialDescriptor = serializer().descriptor
                 override fun deserialize(decoder: JsonDecoder): Background {
                     val json = decoder.decodeJsonElement().jsonObject
-                    val data = json["data"]!!.jsonObject
                     return Background(
-                        Color.decode(data["background_color"]!!.jsonPrimitive.content),
-                        Color.decode(data["background_bottom_color"]!!.jsonPrimitive.content),
-                        Color.decode(data["background_color_end"]!!.jsonPrimitive.content),
-                        Color.decode(data["background_color_start"]!!.jsonPrimitive.content),
-                        data["background_image"]!!.jsonPrimitive.content,
-                        Color.decode(data["background_price_color"]!!.jsonPrimitive.content)
+                        Color.decode(json["background_color"]!!.jsonPrimitive.content),
+                        Color.decode(json["background_bottom_color"]!!.jsonPrimitive.content),
+                        Color.decode(json["background_color_end"]!!.jsonPrimitive.content),
+                        Color.decode(json["background_color_start"]!!.jsonPrimitive.content),
+                        json["background_image"]!!.jsonPrimitive.content,
+                        Color.decode(json["background_price_color"]!!.jsonPrimitive.content)
                     )
                 }
             }
