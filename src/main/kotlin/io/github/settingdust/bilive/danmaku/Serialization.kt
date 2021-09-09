@@ -26,7 +26,7 @@ inline fun <reified T> Json.decodeFromJsonElementOrNull(json: JsonElement?): T? 
         null
     }
 
-internal interface BSerializer<T> : KSerializer<T> {
+interface BSerializer<T> : KSerializer<T> {
     override fun deserialize(decoder: Decoder): T = throw UnsupportedOperationException("Shouldn't be deserialized")
 
     override fun serialize(encoder: Encoder, value: T) {
@@ -34,7 +34,7 @@ internal interface BSerializer<T> : KSerializer<T> {
     }
 }
 
-internal interface JsonSerializer<T> : BSerializer<T> {
+interface JsonSerializer<T> : BSerializer<T> {
     override fun deserialize(decoder: Decoder): T {
         require(decoder is JsonDecoder)
         return deserialize(decoder)
