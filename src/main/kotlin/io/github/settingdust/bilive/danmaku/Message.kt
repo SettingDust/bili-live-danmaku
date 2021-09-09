@@ -5,6 +5,7 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.descriptors.element
 import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
@@ -52,6 +53,10 @@ sealed class Message : Body() {
 
                 override fun deserialize(decoder: Decoder): Danmu =
                     bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
+
+                override fun serialize(encoder: Encoder, value: Danmu) {
+                    encoder.encodeString(bodyJsonFormat.encodeToString(Json, value))
+                }
             }
 
             object Json : MessageSerializer<Danmu> {
@@ -104,6 +109,10 @@ sealed class Message : Body() {
 
                 override fun deserialize(decoder: Decoder): SendGift =
                     bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
+
+                override fun serialize(encoder: Encoder, value: SendGift) {
+                    encoder.encodeString(bodyJsonFormat.encodeToString(Json, value))
+                }
             }
 
             object Json : MessageSerializer<SendGift> {
@@ -183,6 +192,10 @@ sealed class Message : Body() {
 
                 override fun deserialize(decoder: Decoder): SuperChat =
                     bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
+
+                override fun serialize(encoder: Encoder, value: SuperChat) {
+                    encoder.encodeString(bodyJsonFormat.encodeToString(Json, value))
+                }
             }
 
             object Json : MessageSerializer<SuperChat> {
