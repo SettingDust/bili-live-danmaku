@@ -7,10 +7,12 @@ import kotlinx.serialization.descriptors.element
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -41,7 +43,7 @@ sealed class Message : Body() {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): Danmu =
-                    jsonFormat.decodeFromString(Json, decoder.decodeString())
+                    bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
             object Json : MessageSerializer<Danmu> {
@@ -56,6 +58,10 @@ sealed class Message : Body() {
                         Instant.ofEpochMilli(meta[4].jsonPrimitive.long),
                         decoder.json.decodeFromJsonElement(info)
                     )
+                }
+
+                override fun serialize(encoder: JsonEncoder, value: Danmu) {
+                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
                 }
 
                 override val descriptor: SerialDescriptor = serializer().descriptor
@@ -89,7 +95,7 @@ sealed class Message : Body() {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): SendGift =
-                    jsonFormat.decodeFromString(Json, decoder.decodeString())
+                    bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
             object Json : MessageSerializer<SendGift> {
@@ -111,6 +117,10 @@ sealed class Message : Body() {
                         CoinType.valueOf(data["coin_type"]!!.jsonPrimitive.content.uppercase()),
                         data["is_first"]!!.jsonPrimitive.boolean
                     )
+                }
+
+                override fun serialize(encoder: JsonEncoder, value: SendGift) {
+                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
                 }
             }
         }
@@ -152,6 +162,10 @@ sealed class Message : Body() {
                         Color.decode(json["background_price_color"]!!.jsonPrimitive.content)
                     )
                 }
+
+                override fun serialize(encoder: JsonEncoder, value: Background) {
+                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
+                }
             }
         }
 
@@ -160,7 +174,7 @@ sealed class Message : Body() {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): SuperChat =
-                    jsonFormat.decodeFromString(Json, decoder.decodeString())
+                    bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
             object Json : MessageSerializer<SuperChat> {
@@ -179,6 +193,10 @@ sealed class Message : Body() {
                         Instant.ofEpochSecond(data["end_time"]!!.jsonPrimitive.long),
                         decoder.json.decodeFromJsonElement(data)
                     )
+                }
+
+                override fun serialize(encoder: JsonEncoder, value: SuperChat) {
+                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
                 }
             }
         }

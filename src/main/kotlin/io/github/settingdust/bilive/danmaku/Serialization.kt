@@ -61,10 +61,6 @@ internal interface MessageSerializer<T : Message> : JsonSerializer<T> {
         } else throw SerializationException("Can't deserialize")
     }
 
-    override fun serialize(encoder: JsonEncoder, value: T) {
-        TODO()
-    }
-
     fun deserialize(json: JsonObject, decoder: JsonDecoder): T
 }
 

@@ -14,12 +14,14 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonContentPolymorphicSerializer
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 
-internal val jsonFormat: Json by lazy {
+val bodyJsonFormat: Json by lazy {
     Json {
         encodeDefaults = true
         ignoreUnknownKeys = true
@@ -34,6 +36,10 @@ internal val jsonFormat: Json by lazy {
                 subclass(Body.Authentication.serializer())
                 subclass(Body.Heartbeat.serializer())
             }
+            contextual(Message.Danmu.Serializer.Json)
+            contextual(Message.SendGift.Serializer.Json)
+            contextual(Message.SuperChat.Serializer.Json)
+            contextual(Body.Unknown.Serializer.Json)
         }
     }
 }
@@ -44,7 +50,7 @@ internal interface Sendable {
     var protocol: Protocol
 
     companion object {
-        private val packetFormat = PacketFormat(jsonFormat, SerializersModule {
+        private val packetFormat = PacketFormat(bodyJsonFormat, SerializersModule {
             contextual(DateAsLongSerializer)
             contextual(ColorAsIntSerializer)
         })
@@ -137,11 +143,11 @@ sealed class Body {
         }
     }
 
-    @Serializable(with = Unknown.Serializer::class)
+    @Serializable(with = Unknown.Serializer.Packet::class)
     data class Unknown(val body: ByteArray) : Body() {
         override fun toString() = String(body)
 
-        fun node(): JsonElement = jsonFormat.parseToJsonElement(toString())
+        fun node(): JsonElement = bodyJsonFormat.parseToJsonElement(toString())
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -158,12 +164,21 @@ sealed class Body {
             return body.contentHashCode()
         }
 
-        object Serializer : BSerializer<Unknown> {
-            override val descriptor: SerialDescriptor =
-                PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)
+        internal object Serializer {
+            object Packet : BSerializer<Unknown> {
+                override val descriptor: SerialDescriptor =
+                    PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)
 
-            override fun deserialize(decoder: Decoder): Unknown {
-                return Unknown(decoder.decodeString().toByteArray())
+                override fun deserialize(decoder: Decoder): Unknown = Unknown(decoder.decodeString().toByteArray())
+            }
+
+            object Json : JsonSerializer<Unknown> {
+                override val descriptor: SerialDescriptor =
+                    PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)
+
+                override fun serialize(encoder: JsonEncoder, value: Unknown) {
+                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
+                }
             }
         }
     }

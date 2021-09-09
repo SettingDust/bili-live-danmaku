@@ -31,7 +31,7 @@ import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
 internal val packetFormat = PacketFormat(
-    jsonFormat,
+    bodyJsonFormat,
     SerializersModule {
         contextual(DateAsLongSerializer)
         contextual(ColorAsIntSerializer)
@@ -90,7 +90,7 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                         HEARTBEAT_REPLY -> packetFormat.decodeFromPacket<Body.HeartbeatReply>(packet)
                         AUTH_REPLY -> packetFormat.decodeFromPacket<Body.AuthenticationReply>(packet)
                         SEND_MSG_REPLY -> {
-                            val element = jsonFormat.decodeFromString<JsonElement>(String(packet.body)).jsonObject
+                            val element = bodyJsonFormat.decodeFromString<JsonElement>(String(packet.body)).jsonObject
                             try {
                                 val type = element["cmd"]?.jsonPrimitive?.content?.let { MessageType.valueOf(it) }
                                 if (type != null && type in messageTypeMap) {
