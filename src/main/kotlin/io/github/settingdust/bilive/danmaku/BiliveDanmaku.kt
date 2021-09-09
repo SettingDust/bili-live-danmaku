@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
+import kotlinx.serialization.serializer
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
 
@@ -44,6 +45,14 @@ fun main() = runBlocking {
 }
 
 class BiliveDanmaku(override val coroutineContext: CoroutineContext) : CoroutineScope {
+    companion object {
+        val messageTypeMap = mapOf(
+            DANMU_MSG to Message.Danmu::class,
+            SEND_GIFT to Message.SendGift::class,
+            SUPER_CHAT_MESSAGE to Message.SuperChat::class
+        )
+    }
+
     private val client = HttpClient(CIO) {
         install(WebSockets)
         install(JsonFeature) {
@@ -51,7 +60,10 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
         }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class, InternalCoroutinesApi::class)
+    @OptIn(
+        ExperimentalCoroutinesApi::class, InternalCoroutinesApi::class,
+        kotlinx.serialization.InternalSerializationApi::class
+    )
     fun connect(roomId: Int) = produce {
         // TODO Fetch id from https://api.live.bilibili.com/room/v1/Room/get_info?room_id=5050
         // NOT REQUIRED 2021-8-18 Fetch token from https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=$roomId
@@ -80,11 +92,11 @@ class BiliveDanmaku(override val coroutineContext: CoroutineContext) : Coroutine
                         SEND_MSG_REPLY -> {
                             val element = jsonFormat.decodeFromString<JsonElement>(String(packet.body)).jsonObject
                             try {
-                                when (MessageType.valueOf(element["cmd"]?.jsonPrimitive?.content ?: "")) {
-                                    DANMU_MSG -> packetFormat.decodeFromPacket<Message.Danmu>(packet)
-                                    SEND_GIFT -> packetFormat.decodeFromPacket<Message.SendGift>(packet)
-                                    SUPER_CHAT_MESSAGE -> packetFormat.decodeFromPacket<Message.SuperChat>(packet)
-                                    else -> packetFormat.decodeFromPacket<Body.Unknown>(packet)
+                                val type = element["cmd"]?.jsonPrimitive?.content?.let { MessageType.valueOf(it) }
+                                if (type != null && type in messageTypeMap) {
+                                    packetFormat.decodeFromPacket(messageTypeMap[type]!!.serializer(), packet)
+                                } else {
+                                    packetFormat.decodeFromPacket<Body.Unknown>(packet)
                                 }
                             } catch (e: IllegalArgumentException) {
                                 packetFormat.decodeFromPacket<Body.Unknown>(packet)
