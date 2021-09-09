@@ -29,7 +29,7 @@ val bodyJsonFormat: Json by lazy {
         allowStructuredMapKeys = true
         classDiscriminator = ""
         serializersModule = SerializersModule {
-            contextual(DateAsLongSerializer)
+            contextual(InstantAsLongSerializer)
             contextual(ColorAsIntSerializer)
             polymorphic(Sendable::class) {
                 default { Sendable.Serializer }
@@ -51,7 +51,7 @@ internal interface Sendable {
 
     companion object {
         private val packetFormat = PacketFormat(bodyJsonFormat, SerializersModule {
-            contextual(DateAsLongSerializer)
+            contextual(InstantAsLongSerializer)
             contextual(ColorAsIntSerializer)
         })
 

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
@@ -20,6 +21,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.put
 import kotlinx.serialization.serializer
 import java.awt.Color
 import java.io.UnsupportedEncodingException
@@ -74,7 +76,12 @@ sealed class Message : Body() {
                 }
 
                 override fun serialize(encoder: JsonEncoder, value: Danmu) {
-                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
+                    encoder.encodeJsonElement(encoder.json.encodeToJsonElement(buildJsonObject {
+                        put("content", value.content)
+                        put("color", encoder.json.encodeToJsonElement(value.color))
+                        put("timestamp", encoder.json.encodeToJsonElement(value.timestamp))
+                        put("sender", encoder.json.encodeToJsonElement(value.sender))
+                    }))
                 }
 
                 override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Danmu")
@@ -137,7 +144,18 @@ sealed class Message : Body() {
                 }
 
                 override fun serialize(encoder: JsonEncoder, value: SendGift) {
-                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
+                    encoder.encodeJsonElement(buildJsonObject {
+                        put("id", encoder.json.encodeToJsonElement(value.id))
+                        put("sender", encoder.json.encodeToJsonElement(value.sender))
+                        put("timestamp", encoder.json.encodeToJsonElement(value.timestamp))
+                        put("number", value.number)
+                        put("giftId", value.giftId)
+                        put("giftName", value.giftName)
+                        put("totalNumber", value.totalNumber)
+                        put("price", value.price)
+                        put("coinType", encoder.json.encodeToJsonElement(value.coinType))
+                        put("isFirst", value.isFirst)
+                    })
                 }
             }
         }
@@ -217,7 +235,15 @@ sealed class Message : Body() {
                 }
 
                 override fun serialize(encoder: JsonEncoder, value: SuperChat) {
-                    encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
+                    encoder.encodeJsonElement(buildJsonObject {
+                        put("sender", encoder.json.encodeToJsonElement(value.sender))
+                        put("content", value.content)
+                        put("color", encoder.json.encodeToJsonElement(value.color))
+                        put("price", value.price)
+                        put("startTime", encoder.json.encodeToJsonElement(value.startTime))
+                        put("endTime", encoder.json.encodeToJsonElement(value.endTime))
+                        put("background", encoder.json.encodeToJsonElement(value.background))
+                    })
                 }
             }
         }

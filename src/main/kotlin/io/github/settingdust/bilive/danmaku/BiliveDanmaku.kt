@@ -33,7 +33,7 @@ import kotlin.coroutines.CoroutineContext
 internal val packetFormat = PacketFormat(
     bodyJsonFormat,
     SerializersModule {
-        contextual(DateAsLongSerializer)
+        contextual(InstantAsLongSerializer)
         contextual(ColorAsIntSerializer)
     }
 )

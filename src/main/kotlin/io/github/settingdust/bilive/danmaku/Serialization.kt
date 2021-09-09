@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.awt.Color
 import java.io.UnsupportedEncodingException
-import java.util.Date
+import java.time.Instant
 
 inline fun <reified T> Json.decodeFromJsonElementOrNull(json: JsonElement?): T? =
     try {
@@ -64,10 +64,10 @@ interface MessageSerializer<T : Message> : JsonSerializer<T> {
     fun deserialize(json: JsonObject, decoder: JsonDecoder): T
 }
 
-object DateAsLongSerializer : KSerializer<Date> {
+object InstantAsLongSerializer : KSerializer<Instant> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Date", PrimitiveKind.LONG)
-    override fun serialize(encoder: Encoder, value: Date) = encoder.encodeLong(value.time)
-    override fun deserialize(decoder: Decoder): Date = Date(decoder.decodeLong())
+    override fun serialize(encoder: Encoder, value: Instant) = encoder.encodeLong(value.toEpochMilli())
+    override fun deserialize(decoder: Decoder): Instant = Instant.ofEpochMilli(decoder.decodeLong())
 }
 
 object ColorAsIntSerializer : KSerializer<Color> {
