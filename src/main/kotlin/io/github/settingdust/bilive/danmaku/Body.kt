@@ -164,7 +164,7 @@ sealed class Body {
             return body.contentHashCode()
         }
 
-        internal object Serializer {
+        object Serializer {
             object Packet : BSerializer<Unknown> {
                 override val descriptor: SerialDescriptor =
                     PrimitiveSerialDescriptor("Body.Unknown", PrimitiveKind.STRING)

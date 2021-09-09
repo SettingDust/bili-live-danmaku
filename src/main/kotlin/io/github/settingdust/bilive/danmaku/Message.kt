@@ -38,7 +38,7 @@ sealed class Message : Body() {
          */
         val sender: User
     ) : Message() {
-        internal object Serializer {
+        object Serializer {
             object Packet : BSerializer<Danmu> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
@@ -90,7 +90,7 @@ sealed class Message : Body() {
             SILVER, GOLD;
         }
 
-        internal object Serializer {
+        object Serializer {
             object Packet : BSerializer<SendGift> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
@@ -169,7 +169,7 @@ sealed class Message : Body() {
             }
         }
 
-        internal object Serializer {
+        object Serializer {
             object Packet : BSerializer<SuperChat> {
                 override val descriptor: SerialDescriptor = serializer().descriptor
 
