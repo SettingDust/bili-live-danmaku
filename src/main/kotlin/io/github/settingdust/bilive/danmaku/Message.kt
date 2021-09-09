@@ -48,7 +48,7 @@ sealed class Message : Body() {
     ) : Message() {
         object Serializer {
             object Packet : BSerializer<Danmu> {
-                override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Danmu")
+                override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): Danmu =
                     bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
@@ -72,7 +72,7 @@ sealed class Message : Body() {
                     encoder.encodeJsonElement(bodyJsonFormat.encodeToJsonElement(value))
                 }
 
-                override val descriptor: SerialDescriptor = serializer().descriptor
+                override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Danmu")
             }
         }
     }
@@ -179,14 +179,14 @@ sealed class Message : Body() {
 
         object Serializer {
             object Packet : BSerializer<SuperChat> {
-                override val descriptor: SerialDescriptor = buildClassSerialDescriptor("SuperChat")
+                override val descriptor: SerialDescriptor = serializer().descriptor
 
                 override fun deserialize(decoder: Decoder): SuperChat =
                     bodyJsonFormat.decodeFromString(Json, decoder.decodeString())
             }
 
             object Json : MessageSerializer<SuperChat> {
-                override val descriptor: SerialDescriptor = serializer().descriptor
+                override val descriptor: SerialDescriptor = buildClassSerialDescriptor("SuperChat")
 
                 override val type: MessageType = MessageType.SUPER_CHAT_MESSAGE
 
