@@ -52,7 +52,7 @@ internal interface JsonSerializer<T> : BSerializer<T> {
     }
 }
 
-internal interface MessageSerializer<T : Message> : JsonSerializer<T> {
+interface MessageSerializer<T : Message> : JsonSerializer<T> {
     val type: MessageType
     override fun deserialize(decoder: JsonDecoder): T {
         val json = decoder.decodeJsonElement().jsonObject

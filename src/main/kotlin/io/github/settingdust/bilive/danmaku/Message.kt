@@ -25,6 +25,14 @@ import java.io.UnsupportedEncodingException
 import java.time.Instant
 
 sealed class Message : Body() {
+    companion object {
+        val jsonSerializers = mapOf(
+            Danmu::class to Danmu.Serializer.Json,
+            SendGift::class to SendGift.Serializer.Json,
+            SuperChat::class to SuperChat.Serializer.Json
+        )
+    }
+
     /**
      * @see [MessageType.DANMU_MSG]
      */
