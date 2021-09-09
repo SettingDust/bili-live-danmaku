@@ -349,6 +349,17 @@ data class User(
         }
 
         override val descriptor: SerialDescriptor = serializer<Medal>().descriptor
+
+        override fun serialize(encoder: JsonEncoder, value: User) {
+            encoder.encodeJsonElement(buildJsonObject {
+                put("id", value.id)
+                put("name", value.name)
+                put("avatar", value.avatar)
+                put("level", encoder.json.encodeToJsonElement(value.level))
+                put("title", value.title)
+                put("medal", encoder.json.encodeToJsonElement(value.medal))
+            })
+        }
     }
 }
 
@@ -437,6 +448,22 @@ data class Medal(
             element<Int?>("anchorRoom")
             element<String?>("anchorName")
         }
+
+        override fun serialize(encoder: JsonEncoder, value: Medal) {
+            encoder.encodeJsonElement(buildJsonObject {
+                put("level", value.level)
+                put("name", value.name)
+                put("color", encoder.json.encodeToJsonElement(value.color))
+                put("borderColor", encoder.json.encodeToJsonElement(value.borderColor))
+                put("startColor", encoder.json.encodeToJsonElement(value.startColor))
+                put("endColor", encoder.json.encodeToJsonElement(value.endColor))
+                put("guardType", encoder.json.encodeToJsonElement(value.guardType))
+                put("lighted", value.lighted)
+                put("anchorId", value.anchorId)
+                put("anchorRoom", value.anchorRoom)
+                put("anchorName", value.anchorName)
+            })
+        }
     }
 }
 
@@ -464,6 +491,15 @@ data class UserLevel(
                 json[3].jsonPrimitive.content
             )
             else -> throw UnsupportedEncodingException()
+        }
+
+        override fun serialize(encoder: JsonEncoder, value: UserLevel) {
+
+            encoder.encodeJsonElement(buildJsonObject {
+                put("level", value.level)
+                put("color", encoder.json.encodeToJsonElement(value.color))
+                put("rank", value.rank)
+            })
         }
     }
 }
