@@ -31,6 +31,7 @@ val bodyJsonFormat: Json by lazy {
         serializersModule = SerializersModule {
             contextual(InstantAsLongSerializer)
             contextual(ColorAsIntSerializer)
+            contextual(ULongAsStringSerializer)
             polymorphic(Sendable::class) {
                 default { Sendable.Serializer }
                 subclass(Body.Authentication.serializer())
