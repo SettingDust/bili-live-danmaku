@@ -70,6 +70,12 @@ object InstantAsLongSerializer : KSerializer<Instant> {
     override fun deserialize(decoder: Decoder): Instant = Instant.ofEpochMilli(decoder.decodeLong())
 }
 
+object ULongAsStringSerializer : KSerializer<ULong> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("ULong", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: ULong) = encoder.encodeString(value.toString())
+    override fun deserialize(decoder: Decoder): ULong = decoder.decodeString().toULong()
+}
+
 object ColorAsIntSerializer : KSerializer<Color> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Date", PrimitiveKind.LONG)
     override fun serialize(encoder: Encoder, value: Color) = encoder.encodeInt(value.rgb)

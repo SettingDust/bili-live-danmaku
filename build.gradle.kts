@@ -1,8 +1,8 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.5.21"
-    kotlin("plugin.serialization") version "1.5.21"
+    kotlin("jvm") version "1.5.30"
+    kotlin("plugin.serialization") version "1.5.30"
     id("org.jlleitschuh.gradle.ktlint") version "10.1.0"
     maven
 }
@@ -14,13 +14,13 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "1.6.2"
-val brotliVersion = "1.5.0"
+val ktorVersion = "1.6.3"
+val brotliVersion = "1.6.0"
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.2.2")
 
     implementation("com.aayushatharva.brotli4j:brotli4j:$brotliVersion")
@@ -43,6 +43,7 @@ tasks {
 
     withType<KotlinCompile>().configureEach {
         kotlinOptions.freeCompilerArgs += "-Xopt-in=kotlin.RequiresOptIn"
+        kotlinOptions.useIR = true
     }
 
     val sourcesJar by creating(Jar::class) {
