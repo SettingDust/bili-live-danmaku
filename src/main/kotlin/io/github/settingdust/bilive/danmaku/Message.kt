@@ -33,6 +33,10 @@ sealed class Message : Body() {
         val sender: User
     }
 
+    interface WithTimestamp {
+        val timestamp: Instant
+    }
+
     /**
      * @see [MessageType.DANMU_MSG]
      */
@@ -40,12 +44,12 @@ sealed class Message : Body() {
     data class Danmu(
         val content: String,
         val color: Color,
-        val timestamp: Instant,
+        override val timestamp: Instant,
         /**
          * 不包含 avatar
          */
         override val sender: User
-    ) : Message(), WithUser {
+    ) : Message(), WithUser, WithTimestamp {
         object Serializer {
             object Packet : BSerializer<Danmu> {
                 override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Danmu")
@@ -94,7 +98,7 @@ sealed class Message : Body() {
          * Medal 不包含 anchorRoom, anchorName
          */
         override val sender: User,
-        val timestamp: Instant,
+        override val timestamp: Instant,
         val number: Int,
         val giftId: Int,
         val giftName: String,
@@ -102,7 +106,7 @@ sealed class Message : Body() {
         val price: Int,
         val coinType: CoinType,
         val isFirst: Boolean
-    ) : Message(), WithUser {
+    ) : Message(), WithUser, WithTimestamp {
         enum class CoinType {
             SILVER, GOLD;
         }
@@ -170,7 +174,7 @@ sealed class Message : Body() {
         val startTime: Instant,
         val endTime: Instant,
         val background: Background
-    ) : Message(), WithUser {
+    ) : Message(), WithUser, WithTimestamp {
 
         @Serializable(with = Background.Serializer::class)
         data class Background(
@@ -244,6 +248,9 @@ sealed class Message : Body() {
                 }
             }
         }
+
+        override val timestamp: Instant
+            get() = startTime
     }
 }
 
