@@ -29,6 +29,7 @@ import kotlinx.serialization.modules.contextual
 import kotlinx.serialization.serializer
 import kotlin.concurrent.timer
 import kotlin.coroutines.CoroutineContext
+import kotlin.reflect.KClass
 
 internal val packetFormat = PacketFormat(
     bodyJsonFormat,
@@ -46,7 +47,7 @@ fun main() = runBlocking {
 
 class BiliveDanmaku(override val coroutineContext: CoroutineContext) : CoroutineScope {
     companion object {
-        val messageTypeMap = mapOf(
+        val messageTypeMap = mapOf<MessageType, KClass<out Message>>(
             DANMU_MSG to Message.Danmu::class,
             SEND_GIFT to Message.SendGift::class,
             SUPER_CHAT_MESSAGE to Message.SuperChat::class

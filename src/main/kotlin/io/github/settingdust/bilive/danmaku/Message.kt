@@ -28,6 +28,11 @@ import java.io.UnsupportedEncodingException
 import java.time.Instant
 
 sealed class Message : Body() {
+
+    interface WithUser {
+        val sender: User
+    }
+
     /**
      * @see [MessageType.DANMU_MSG]
      */
@@ -39,8 +44,8 @@ sealed class Message : Body() {
         /**
          * 不包含 avatar
          */
-        val sender: User
-    ) : Message() {
+        override val sender: User
+    ) : Message(), WithUser {
         object Serializer {
             object Packet : BSerializer<Danmu> {
                 override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Danmu")
@@ -88,7 +93,7 @@ sealed class Message : Body() {
          * User 不包含 title, level
          * Medal 不包含 anchorRoom, anchorName
          */
-        val sender: User,
+        override val sender: User,
         val timestamp: Instant,
         val number: Int,
         val giftId: Int,
@@ -97,7 +102,7 @@ sealed class Message : Body() {
         val price: Int,
         val coinType: CoinType,
         val isFirst: Boolean
-    ) : Message() {
+    ) : Message(), WithUser {
         enum class CoinType {
             SILVER, GOLD;
         }
@@ -158,14 +163,14 @@ sealed class Message : Body() {
         /**
          * 包含全部
          */
-        val sender: User,
+        override val sender: User,
         val content: String,
         val color: Color,
         val price: Int,
         val startTime: Instant,
         val endTime: Instant,
         val background: Background
-    ) : Message() {
+    ) : Message(), WithUser {
 
         @Serializable(with = Background.Serializer::class)
         data class Background(
